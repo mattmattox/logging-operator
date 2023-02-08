@@ -67,34 +67,48 @@ type Concat struct {
 	UsePartialMetadata string `json:"use_partial_metadata,omitempty"`
 	//If true, keep partial metadata
 	KeepPartialMetadata string `json:"keep_partial_metadata,omitempty"`
+	//Input format of the partial metadata (fluentd or journald docker log driver)( docker-fluentd, docker-journald, docker-journald-lowercase)
+	PartialMetadataFormat string `json:"partial_metadata_format,omitempty"`
+	//Use cri log tag to concatenate multiple records
+	UsePartialCriLogtag bool `json:"use_partial_cri_logtag,omitempty"`
+	//The key name that is referred to concatenate records on cri log
+	PartialCriLogtagKey string `json:"partial_cri_logtag_key,omitempty"`
+	//The key name that is referred to detect stream name on cri log
+	PartialCriStreamKey string `json:"partial_cri_stream_key,omitempty"`
 }
 
-// #### Example `Concat` filter configurations
+// ## Example `Concat` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - concat:
-//        partial_key: "partial_message"
-//        separator: ""
-//        n_lines: 10
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Flow
+// metadata:
+//
+//	name: demo-flow
+//
+// spec:
+//
+//	filters:
+//	  - concat:
+//	      partial_key: "partial_message"
+//	      separator: ""
+//	      n_lines: 10
+//	selectors: {}
+//	localOutputRefs:
+//	  - demo-output
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```yaml
-//<filter **>
-//  @type concat
-//  @id test_concat
-//  key message
-//  n_lines 10
-//  partial_key partial_message
-//</filter>
+// <filter **>
+//
+//	@type concat
+//	@id test_concat
+//	key message
+//	n_lines 10
+//	partial_key partial_message
+//
+// </filter>
 // ```
 type _expConcat interface{} //nolint:deadcode,unused
 

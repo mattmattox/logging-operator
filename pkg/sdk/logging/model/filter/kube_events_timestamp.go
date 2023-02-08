@@ -43,23 +43,27 @@ type KubeEventsTimestampConfig struct {
 	MappedTimeKey string `json:"mapped_time_key,omitempty"`
 }
 
-// #### Example `Kubernetes Events Timestamp` filter configurations
+// ## Example `Kubernetes Events Timestamp` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: es-flow
-//spec:
-//  filters:
-//    - kube_events_timestamp:
-//        timestamp_fields:
-//          - "event.eventTime"
-//          - "event.lastTimestamp"
-//          - "event.firstTimestamp"
-//        mapped_time_key: mytimefield
-//  selectors: {}
-//  localOutputRefs:
-//    - es-output
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Flow
+// metadata:
+//
+//	name: es-flow
+//
+// spec:
+//
+//	filters:
+//	  - kube_events_timestamp:
+//	      timestamp_fields:
+//	        - "event.eventTime"
+//	        - "event.lastTimestamp"
+//	        - "event.firstTimestamp"
+//	      mapped_time_key: mytimefield
+//	selectors: {}
+//	localOutputRefs:
+//	  - es-output
+//
 // ```
 //
 // #### Fluentd Config Result

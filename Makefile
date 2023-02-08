@@ -31,11 +31,11 @@ CONTROLLER_GEN = ${BIN}/controller-gen
 CONTROLLER_GEN_VERSION = v0.6.0
 
 ENVTEST_BIN_DIR := ${BIN}/envtest
-ENVTEST_K8S_VERSION := 1.21.4
+ENVTEST_K8S_VERSION := 1.24.1
 ENVTEST_BINARY_ASSETS := ${ENVTEST_BIN_DIR}/bin
 
 GOLANGCI_LINT := ${BIN}/golangci-lint
-GOLANGCI_LINT_VERSION := v1.46.2
+GOLANGCI_LINT_VERSION := v1.47.2
 
 KIND := ${BIN}/kind
 KIND_VERSION := v0.11.1
@@ -164,7 +164,7 @@ test-e2e: ${KIND} docker-build generate fmt vet manifests ## Run E2E tests
 
 .PHONY: tidy
 tidy: ## Tidy Go modules
-	find . -iname "go.mod" | xargs -L1 sh -c 'cd $$(dirname $$0); go mod tidy -compat=1.17'
+	find . -iname "go.mod" | xargs -L1 sh -c 'cd $$(dirname $$0); go mod tidy'
 
 .PHONY: vet
 vet: ## Run go vet against code

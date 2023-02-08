@@ -24,8 +24,8 @@ import (
 type _hugoAzure interface{} //nolint:deadcode,unused
 
 // +docName:"Azure Storage output plugin for Fluentd"
-//Azure Storage output plugin buffers logs in local file and upload them to Azure Storage periodically.
-//More info at https://github.com/microsoft/fluent-plugin-azure-storage-append-blob
+// Azure Storage output plugin buffers logs in local file and upload them to Azure Storage periodically.
+// More info at https://github.com/microsoft/fluent-plugin-azure-storage-append-blob
 type _docAzure interface{} //nolint:deadcode,unused
 
 // +name:"Azure Storage"
@@ -61,6 +61,10 @@ type AzureStorage struct {
 	Format string `json:"format,omitempty" plugin:"default:json"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 func (a *AzureStorage) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

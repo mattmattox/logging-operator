@@ -25,25 +25,27 @@ import (
 type _hugoLoki interface{} //nolint:deadcode,unused
 
 // +docName:"Loki output plugin "
-//Fluentd output plugin to ship logs to a Loki server.
-//More info at https://github.com/banzaicloud/fluent-plugin-kubernetes-loki
-//>Example: [Store Nginx Access Logs in Grafana Loki with Logging Operator](../../../../quickstarts/loki-nginx/)
+// Fluentd output plugin to ship logs to a Loki server.
+// More info at https://github.com/banzaicloud/fluent-plugin-kubernetes-loki
+// >Example: [Store Nginx Access Logs in Grafana Loki with Logging Operator](../../../../quickstarts/loki-nginx/)
 //
-// #### Example output configurations
+// ## Example output configurations
 // ```yaml
 // spec:
-//   loki:
-//     url: http://loki:3100
-//     buffer:
-//       timekey: 1m
-//       timekey_wait: 30s
-//       timekey_use_utc: true
+//
+//	loki:
+//	  url: http://loki:3100
+//	  buffer:
+//	    timekey: 1m
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docLoki interface{} //nolint:deadcode,unused
 
 // +name:"Grafana Loki"
 // +url:"https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki"
-// +version:"1.2.17"
+// +version:"1.2.19"
 // +description:"Transfer logs to Loki"
 // +status:"GA"
 type _metaLoki interface{} //nolint:deadcode,unused
@@ -86,8 +88,14 @@ type LokiOutput struct {
 	DropSingleKey *bool `json:"drop_single_key,omitempty"`
 	// Configure Kubernetes metadata in a Prometheus like format (default: false)
 	ConfigureKubernetesLabels *bool `json:"configure_kubernetes_labels,omitempty"`
+	// whether to include the fluentd_thread label when multiple threads are used for flushing. (default: true)
+	IncludeThreadLabel *bool `json:"include_thread_label,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 type Label map[string]string
@@ -141,6 +149,9 @@ func (l *LokiOutput) ToDirective(secretLoader secret.SecretLoader, id string) (t
 		}
 		if l.ExtractKubernetesLabels == nil {
 			l.ExtractKubernetesLabels = util.BoolPointer(true)
+		}
+		if l.IncludeThreadLabel == nil {
+			l.IncludeThreadLabel = util.BoolPointer(true)
 		}
 		// Prevent meta configuration from marshalling
 		l.ConfigureKubernetesLabels = nil

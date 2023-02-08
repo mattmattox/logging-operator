@@ -24,22 +24,24 @@ import (
 type _hugoOpenSearch interface{} //nolint:deadcode,unused
 
 // +docName:"OpenSearch output plugin for Fluentd"
-//More info at https://github.com/fluent/fluent-plugin-opensearch
-//>Example Deployment: [Save all logs to OpenSearch](../../../../quickstarts/es-nginx/)
+// More info at https://github.com/fluent/fluent-plugin-opensearch
+// >Example Deployment: [Save all logs to OpenSearch](../../../../quickstarts/es-nginx/)
 //
-// #### Example output configurations
+// ## Example output configurations
 // ```yaml
 // spec:
-//   opensearch:
-//     host: opensearch-cluster.default.svc.cluster.local
-//     port: 9200
-//     scheme: https
-//     ssl_verify: false
-//     ssl_version: TLSv1_2
-//     buffer:
-//       timekey: 1m
-//       timekey_wait: 30s
-//       timekey_use_utc: true
+//
+//	opensearch:
+//	  host: opensearch-cluster.default.svc.cluster.local
+//	  port: 9200
+//	  scheme: https
+//	  ssl_verify: false
+//	  ssl_version: TLSv1_2
+//	  buffer:
+//	    timekey: 1m
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docOpenSearch interface{} //nolint:deadcode,unused
 
@@ -234,10 +236,24 @@ type OpenSearchOutput struct {
 	TargetIndexAffinity bool `json:"target_index_affinity,omitempty"`
 
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
+
+	// Use @type opensearch_data_stream
+	DataStreamEnable *bool `json:"data_stream_enable,omitempty" plugin:"hidden"`
+	// You can specify Opensearch data stream name by this parameter. This parameter is mandatory for opensearch_data_stream.
+	DataStreamName string `json:"data_stream_name,omitempty"`
+	// Specify an existing index template for the data stream. If not present, a new template is created and named after the data stream. (default: data_stream_name)
+	DataStreamTemplateName string `json:"data_stream_template_name,omitempty"`
 }
 
 func (e *OpenSearchOutput) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {
 	pluginType := "opensearch"
+	if e.DataStreamEnable != nil && *e.DataStreamEnable {
+		pluginType = "opensearch_data_stream"
+	}
 	opensearch := &types.OutputPlugin{
 		PluginMeta: types.PluginMeta{
 			Type:      pluginType,

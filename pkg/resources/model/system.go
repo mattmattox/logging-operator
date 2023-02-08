@@ -34,7 +34,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 	logging := resources.Logging
 
 	var forwardInput *input.ForwardInputConfig
-	if logging.Spec.FluentdSpec.ForwardInputConfig != nil {
+	if logging.Spec.FluentdSpec != nil && logging.Spec.FluentdSpec.ForwardInputConfig != nil {
 		forwardInput = logging.Spec.FluentdSpec.ForwardInputConfig
 	} else {
 		forwardInput = input.NewForwardInputConfig()
@@ -76,11 +76,12 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 
 	builder := types.NewSystemBuilder(rootInput, globalFilters, router)
 
-	for _, flowCr := range resources.Flows {
-		flow, err := FlowForFlow(flowCr, resources.ClusterOutputs, resources.Outputs, secrets)
+	for _, flowCr := range resources.Fluentd.Flows {
+		flow, err := FlowForFlow(flowCr, resources.Fluentd.ClusterOutputs, resources.Fluentd.Outputs, secrets)
 		if err != nil {
 			if logging.Spec.SkipInvalidResources {
-				logger.Error(err, "Flow contains errors.")
+				logger.Error(err, "Flow contains errors, skipping.")
+				continue
 			} else {
 				return nil, err
 			}
@@ -90,11 +91,12 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 			return nil, err
 		}
 	}
-	for _, flowCr := range resources.ClusterFlows {
-		flow, err := FlowForClusterFlow(flowCr, resources.ClusterOutputs, secrets)
+	for _, flowCr := range resources.Fluentd.ClusterFlows {
+		flow, err := FlowForClusterFlow(flowCr, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			if logging.Spec.SkipInvalidResources {
-				logger.Error(err, "ClusterFlow contains errors.")
+				logger.Error(err, "ClusterFlow contains errors, skipping.")
+				continue
 			} else {
 				return nil, err
 			}
@@ -105,7 +107,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 		}
 	}
 	if resources.Logging.Spec.DefaultFlowSpec != nil {
-		flow, err := FlowForDefaultFlow(resources.Logging, resources.ClusterOutputs, secrets)
+		flow, err := FlowForDefaultFlow(resources.Logging, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			// TODO set flow status to error?
 			return nil, err
@@ -119,7 +121,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 	// Set ErrorOutput
 	var errorFlow *types.Flow
 	if resources.Logging.Spec.ErrorOutputRef != "" {
-		errorFlow, err = FlowForError(resources.Logging.Spec.ErrorOutputRef, resources.ClusterOutputs, secrets)
+		errorFlow, err = FlowForError(resources.Logging.Spec.ErrorOutputRef, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			return nil, err
 		}
@@ -269,7 +271,7 @@ func FlowForFlow(flow v1beta1.Flow, clusterOutputs ClusterOutputs, outputs Outpu
 			outputID := fmt.Sprintf("%s:clusteroutput:%s:%s", flowID, clusterOutput.Namespace, clusterOutput.Name)
 			plugin, err := plugins.CreateOutput(clusterOutput.Spec.OutputSpec, outputID, secrets.OutputSecretLoaderForNamespace(clusterOutput.Namespace))
 			if err != nil {
-				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %q", outputRef))
+				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %s", outputRef))
 				continue
 			}
 			allOutputs = append(allOutputs, plugin)
@@ -282,12 +284,12 @@ func FlowForFlow(flow v1beta1.Flow, clusterOutputs ClusterOutputs, outputs Outpu
 			outputID := fmt.Sprintf("%s:output:%s:%s", flowID, output.Namespace, output.Name)
 			plugin, err := plugins.CreateOutput(output.Spec, outputID, secrets.OutputSecretLoaderForNamespace(output.Namespace))
 			if err != nil {
-				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %q", outputRef))
+				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %s/%s", output.Namespace, output.Name))
 				continue
 			}
 			allOutputs = append(allOutputs, plugin)
 		} else {
-			errs = errors.Append(errs, errors.Errorf("referenced output not found: %s", outputRef))
+			errs = errors.Append(errs, errors.Errorf("referenced output %s not found for flow %s/%s", outputRef, flow.Namespace, flow.Name))
 		}
 	}
 	result.WithOutputs(allOutputs...)

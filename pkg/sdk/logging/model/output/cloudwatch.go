@@ -24,31 +24,33 @@ import (
 type _hugoCloudWatch interface{} //nolint:deadcode,unused
 
 // +docName:"CloudWatch output plugin for Fluentd"
-//This plugin has been designed to output logs or metrics to Amazon CloudWatch.
-//More info at https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs
+// This plugin has been designed to output logs or metrics to Amazon CloudWatch.
+// More info at [https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs](https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs).
 //
-// #### Example output configurations
+// ## Example output configurations
 // ```yaml
 // spec:
-//  cloudwatch:
-//    aws_key_id:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsAccessKeyId
-//    aws_sec_key:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsSecretAccessKey
-//    log_group_name: operator-log-group
-//    log_stream_name: operator-log-stream
-//    region: us-east-1
-//    auto_create_stream true
-//    buffer:
-//      timekey: 30s
-//      timekey_wait: 30s
-//      timekey_use_utc: true
+//
+//	cloudwatch:
+//	  aws_key_id:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsAccessKeyId
+//	  aws_sec_key:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsSecretAccessKey
+//	  log_group_name: operator-log-group
+//	  log_stream_name: operator-log-stream
+//	  region: us-east-1
+//	  auto_create_stream true
+//	  buffer:
+//	    timekey: 30s
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docCloudWatch interface{} //nolint:deadcode,unused
 
@@ -137,6 +139,10 @@ type CloudWatchOutput struct {
 	UseTagAsStream bool `json:"use_tag_as_stream,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 	// +docLink:"Format,../format/"
 	Format *Format `json:"format,omitempty"`
 }

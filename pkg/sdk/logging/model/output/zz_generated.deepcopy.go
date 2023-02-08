@@ -1041,6 +1041,11 @@ func (in *LokiOutput) DeepCopyInto(out *LokiOutput) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.IncludeThreadLabel != nil {
+		in, out := &in.IncludeThreadLabel, &out.IncludeThreadLabel
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Buffer != nil {
 		in, out := &in.Buffer, &out.Buffer
 		*out = new(Buffer)
@@ -1240,6 +1245,11 @@ func (in *OpenSearchOutput) DeepCopyInto(out *OpenSearchOutput) {
 		in, out := &in.Buffer, &out.Buffer
 		*out = new(Buffer)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.DataStreamEnable != nil {
+		in, out := &in.DataStreamEnable, &out.DataStreamEnable
+		*out = new(bool)
+		**out = **in
 	}
 }
 

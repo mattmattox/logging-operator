@@ -41,28 +41,34 @@ type StdOutFilterConfig struct {
 	OutputType string `json:"output_type,omitempty"`
 }
 
-// #### Example `StdOut` filter configurations
+// ## Example `StdOut` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - stdout:
-//        output_type: json
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Flow
+// metadata:
+//
+//	name: demo-flow
+//
+// spec:
+//
+//	filters:
+//	  - stdout:
+//	      output_type: json
+//	selectors: {}
+//	localOutputRefs:
+//	  - demo-output
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```yaml
-//<filter **>
-//  @type stdout
-//  @id test_stdout
-//  output_type json
-//</filter>
+// <filter **>
+//
+//	@type stdout
+//	@id test_stdout
+//	output_type json
+//
+// </filter>
 // ```
 type _expStdOut interface{} //nolint:deadcode,unused
 

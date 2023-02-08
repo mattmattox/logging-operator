@@ -56,41 +56,51 @@ type FileOutputConfig struct {
 	Format *Format `json:"format,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
-// #### Example `File` output configurations
+// ## Example `File` output configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Output
-//metadata:
-//  name: demo-output
-//spec:
-//  file:
-//    path: /tmp/logs/${tag}/%Y/%m/%d.%H.%M
-//    append: true
-//    buffer:
-//      timekey: 1m
-//      timekey_wait: 10s
-//      timekey_use_utc: true
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Output
+// metadata:
+//
+//	name: demo-output
+//
+// spec:
+//
+//	file:
+//	  path: /tmp/logs/${tag}/%Y/%m/%d.%H.%M
+//	  append: true
+//	  buffer:
+//	    timekey: 1m
+//	    timekey_wait: 10s
+//	    timekey_use_utc: true
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```
-//  <match **>
-//	@type file
-//	@id test_file
-//	add_path_suffix true
-//	append true
-//	path /tmp/logs/${tag}/%Y/%m/%d.%H.%M
-//	<buffer tag,time>
-//	  @type file
-//	  path /buffers/test_file.*.buffer
-//	  retry_forever true
-//	  timekey 1m
-//	  timekey_use_utc true
-//	  timekey_wait 30s
-//	</buffer>
-//  </match>
+//
+//	 <match **>
+//		@type file
+//		@id test_file
+//		add_path_suffix true
+//		append true
+//		path /tmp/logs/${tag}/%Y/%m/%d.%H.%M
+//		<buffer tag,time>
+//		  @type file
+//		  path /buffers/test_file.*.buffer
+//		  retry_forever true
+//		  timekey 1m
+//		  timekey_use_utc true
+//		  timekey_wait 30s
+//		</buffer>
+//	 </match>
+//
 // ```
 type _expFile interface{} //nolint:deadcode,unused
 
