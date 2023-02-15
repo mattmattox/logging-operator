@@ -13,7 +13,7 @@ require (
 	github.com/onsi/gomega v1.17.0
 	github.com/pborman/uuid v1.2.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.43.0
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/spf13/cast v1.3.1
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 	k8s.io/api v0.23.4
