@@ -17,10 +17,10 @@ package output
 import (
 	"fmt"
 
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/maps/mapstrstr"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/maps/mapstrstr"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"LogZ"
@@ -28,30 +28,33 @@ import (
 type _hugoLogZ interface{} //nolint:deadcode,unused
 
 // +docName:"LogZ output plugin for Fluentd"
-//More info at https://github.com/tarokkk/fluent-plugin-logzio
-//
-// #### Example output configurations
-// ```yaml
-// spec:
-//   logz:
-//     endpoint:
-//       url: https://listener.logz.io
-//       port: 8071
-//       token:
-//         valueFrom:
-//          secretKeyRef:
-//      	  name: logz-token
-//            key: token
-//     output_include_tags: true
-//     output_include_time: true
-//     buffer:
-//       type: file
-//       flush_mode: interval
-//       flush_thread_count: 4
-//       flush_interval: 5s
-//       chunk_limit_size: 16m
-//       queue_limit_length: 4096
-// ```
+/*
+For details, see [https://github.com/tarokkk/fluent-plugin-logzio](https://github.com/tarokkk/fluent-plugin-logzio).
+
+## Example output configurations
+
+```yaml
+spec:
+  logz:
+    endpoint:
+      url: https://listener.logz.io
+      port: 8071
+      token:
+        valueFrom:
+         secretKeyRef:
+           name: logz-token
+           key: token
+    output_include_tags: true
+    output_include_time: true
+    buffer:
+      type: file
+      flush_mode: interval
+      flush_thread_count: 4
+      flush_interval: 5s
+      chunk_limit_size: 16m
+      queue_limit_length: 4096
+```
+*/
 type _docLogZ interface{} //nolint:deadcode,unused
 
 // +name:"LogZ"
@@ -68,9 +71,9 @@ type LogZOutput struct {
 	// Define LogZ endpoint URL
 	Endpoint *Endpoint `json:"endpoint"`
 	// Should the appender add a timestamp to your logs on their process time (recommended).
-	OutputIncludeTime bool `json:"output_include_time,omitempty"`
+	OutputIncludeTime *bool `json:"output_include_time,omitempty"`
 	// Should the appender add the fluentd tag to the document, called "fluentd_tag"
-	OutputIncludeTags bool `json:"output_include_tags,omitempty"`
+	OutputIncludeTags *bool `json:"output_include_tags,omitempty"`
 	// Timeout in seconds that the http persistent connection will stay open without traffic.
 	HTTPIdleTimeout int `json:"http_idle_timeout,omitempty"`
 	// How many times to resend failed bulks.
@@ -85,6 +88,10 @@ type LogZOutput struct {
 	Gzip bool `json:"gzip,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, Fluentd logs a warning message and increases the `fluentd_output_status_slow_flush_count` metric.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 // Endpoint defines connection details for LogZ.io.

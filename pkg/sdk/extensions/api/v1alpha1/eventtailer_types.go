@@ -15,8 +15,9 @@
 package v1alpha1
 
 import (
-	"github.com/banzaicloud/operator-tools/pkg/types"
-	"github.com/banzaicloud/operator-tools/pkg/volume"
+	"github.com/cisco-open/operator-tools/pkg/types"
+	"github.com/cisco-open/operator-tools/pkg/volume"
+	"github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/tailer"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,10 +35,9 @@ type _metaEventTailer = interface{} //nolint:deadcode,unused
 
 // EventTailerSpec defines the desired state of EventTailer
 type EventTailerSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable, please recreate the resource"
 
-	//+kubebuilder:validation:Required
 	// The resources of EventTailer will be placed into this namespace
 	ControlNamespace string `json:"controlNamespace"`
 	// Volume definition for tracking fluentbit file positions (optional)
@@ -48,6 +48,8 @@ type EventTailerSpec struct {
 	WorkloadBase *types.PodSpecBase `json:"workloadOverrides,omitempty"`
 	// Override container fields for the given statefulset
 	ContainerBase *types.ContainerBase `json:"containerOverrides,omitempty"`
+	// Override image related fields for the given statefulset, highest precedence
+	Image *tailer.ImageSpec `json:"image,omitempty"`
 }
 
 // EventTailerStatus defines the observed state of EventTailer

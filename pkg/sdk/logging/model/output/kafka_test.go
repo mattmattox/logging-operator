@@ -17,10 +17,11 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 )
 
 func TestKafka(t *testing.T) {
@@ -46,13 +47,68 @@ buffer:
     ssl_verify_hostname false
     <buffer tag,time>
       @type file
-	  chunk_limit_size 8MB
       path /buffers/test.*.buffer
       retry_forever true
       timekey 1m
       timekey_use_utc true
       timekey_wait 30s
     </buffer>
+    <format>
+      @type json
+    </format>
+  </match>
+`
+	kafka := &output.KafkaOutputConfig{}
+	require.NoError(t, yaml.Unmarshal(CONFIG, kafka))
+	test := render.NewOutputPluginTest(t, kafka)
+	test.DiffResult(expected)
+}
+
+func TestRdkafka(t *testing.T) {
+	CONFIG := []byte(`
+brokers: kafka-headless.kafka.svc.cluster.local:29092
+default_topic: topic
+use_rdkafka: true
+ssl_verify_hostname: false
+rdkafka_options:
+  sasl.mechanisms: PLAIN
+  sasl.username: user
+  security.protocol: SASL_SSL
+  ssl.ca.location: /etc/ssl/certs/ca-certificates.crt
+  ssl.certificate.location: /etc/ssl/certs/tls.crt
+  ssl.key.location: /etc/ssl/certs/tls.key
+  ssl.key.password: password 
+format:
+  type: json
+buffer:
+  timekey: 1m
+  timekey_wait: 30s
+  timekey_use_utc: true
+`)
+	expected := `
+  <match **>
+    @type rdkafka2
+    @id test
+    brokers kafka-headless.kafka.svc.cluster.local:29092
+    default_topic topic
+    ssl_verify_hostname false
+    <buffer tag,time>
+      @type file
+      path /buffers/test.*.buffer
+      retry_forever true
+      timekey 1m
+      timekey_use_utc true
+      timekey_wait 30s
+    </buffer>
+    <rdkafka_options>
+      sasl.mechanisms PLAIN
+      sasl.username user
+      security.protocol SASL_SSL
+      ssl.ca.location /etc/ssl/certs/ca-certificates.crt
+      ssl.certificate.location /etc/ssl/certs/tls.crt
+      ssl.key.location /etc/ssl/certs/tls.key
+      ssl.key.password password
+    </rdkafka_options>
     <format>
       @type json
     </format>

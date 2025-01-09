@@ -17,38 +17,46 @@ package fluentbit
 import (
 	"fmt"
 
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	v1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	prometheus_operator "github.com/kube-logging/logging-operator/pkg/resources/prometheus-operator"
 )
 
 func (r *Reconciler) prometheusRules() (runtime.Object, reconciler.DesiredState, error) {
 	obj := &v1.PrometheusRule{
-		ObjectMeta: r.FluentbitObjectMeta(fluentbitServiceName + "-monitor"),
+		ObjectMeta: r.FluentbitObjectMeta(fluentbitServiceName + "-metrics"),
 	}
 	state := reconciler.StateAbsent
-
-	if r.Logging.Spec.FluentbitSpec.Metrics != nil && r.Logging.Spec.FluentbitSpec.Metrics.PrometheusRules {
+	if r.fluentbitSpec.Metrics != nil && r.fluentbitSpec.Metrics.PrometheusRules {
 		nsJobLabel := fmt.Sprintf(`job="%s", namespace="%s"`, obj.Name, obj.Namespace)
-		state = reconciler.StatePresent
-		obj.Spec.Groups = []v1.RuleGroup{{
-			Name: "fluentbit",
-			Rules: []v1.Rule{
-				{
-					Alert: "FluentbitTooManyErrors",
-					Expr:  intstr.FromString(fmt.Sprintf("rate(fluentbit_output_retries_failed_total{%s}[10m]) > 0", nsJobLabel)),
-					For:   "10m",
-					Labels: map[string]string{
-						"service":  "fluentbit",
-						"severity": "warning",
-					},
-					Annotations: map[string]string{
-						"summary":     `Fluentbit too many errors.`,
-						"description": `Fluentbit ({{ $labels.instance }}) is erroring.`,
-					},
+		builtInRules := []v1.Rule{
+			{
+				Alert: "FluentbitTooManyErrors",
+				Expr:  intstr.FromString(fmt.Sprintf("rate(fluentbit_output_retries_failed_total{%s}[10m]) > 0", nsJobLabel)),
+				For:   prometheus_operator.Duration("10m"),
+				Labels: map[string]string{
+					"service":  "fluentbit",
+					"severity": "warning",
+				},
+				Annotations: map[string]string{
+					"summary":     `Fluentbit too many errors.`,
+					"description": `Fluentbit ({{ $labels.instance }}) is erroring.`,
 				},
 			},
+		}
+		rules := builtInRules
+		if r.fluentbitSpec.Metrics.PrometheusRulesOverride != nil {
+			for _, o := range r.fluentbitSpec.Metrics.PrometheusRulesOverride {
+				rules = o.ListOverride(rules)
+			}
+		}
+		state = reconciler.StatePresent
+		obj.Spec.Groups = []v1.RuleGroup{{
+			Name:  "fluentbit",
+			Rules: rules,
 		},
 		}
 	}

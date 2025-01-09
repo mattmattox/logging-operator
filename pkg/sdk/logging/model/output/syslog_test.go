@@ -17,10 +17,10 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestSyslogOutputConfig(t *testing.T) {
@@ -43,7 +43,6 @@ buffer:
 	port 123
 	<buffer tag,time>
 	  @type file
-	  chunk_limit_size 8MB
 	  path /buffers/test.*.buffer
 	  retry_forever true
 	  timekey 1m
@@ -80,7 +79,6 @@ buffer:
 	port 123
 	<buffer tag,time>
 	  @type file
-	  chunk_limit_size 8MB
 	  path /buffers/test.*.buffer
 	  retry_forever true
 	  timekey 1m
@@ -128,7 +126,6 @@ buffer:
 	version TLSv1_2
 	<buffer tag,time>
 	  @type file
-	  chunk_limit_size 8MB
 	  path /buffers/test.*.buffer
 	  retry_forever true
 	  timekey 1m

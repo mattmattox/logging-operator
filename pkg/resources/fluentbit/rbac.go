@@ -16,17 +16,59 @@ package fluentbit
 
 import (
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/merge"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/merge"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+func (r *Reconciler) sccRole() (runtime.Object, reconciler.DesiredState, error) {
+	if *r.fluentbitSpec.Security.CreateOpenShiftSCC {
+		return &rbacv1.Role{
+			ObjectMeta: r.FluentbitObjectMeta(sccRoleName),
+			Rules: []rbacv1.PolicyRule{
+				{
+					APIGroups:     []string{"security.openshift.io"},
+					ResourceNames: []string{"privileged"},
+					Resources:     []string{"securitycontextconstraints"},
+					Verbs:         []string{"use"},
+				},
+			},
+		}, reconciler.StatePresent, nil
+	}
+	return &rbacv1.Role{
+		ObjectMeta: r.FluentbitObjectMeta(sccRoleName),
+		Rules:      []rbacv1.PolicyRule{}}, reconciler.StateAbsent, nil
+}
+
+func (r *Reconciler) sccRoleBinding() (runtime.Object, reconciler.DesiredState, error) {
+	if *r.fluentbitSpec.Security.CreateOpenShiftSCC {
+		return &rbacv1.RoleBinding{
+			ObjectMeta: r.FluentbitObjectMeta(sccRoleName),
+			RoleRef: rbacv1.RoleRef{
+				Kind:     "Role",
+				APIGroup: rbacv1.GroupName,
+				Name:     r.nameProvider.ComponentName(sccRoleName),
+			},
+			Subjects: []rbacv1.Subject{
+				{
+					Kind:      rbacv1.ServiceAccountKind,
+					Name:      r.getServiceAccount(),
+					Namespace: r.Logging.Spec.ControlNamespace,
+				},
+			},
+		}, reconciler.StatePresent, nil
+	}
+	return &rbacv1.RoleBinding{
+		ObjectMeta: r.FluentbitObjectMeta(sccRoleName),
+		RoleRef:    rbacv1.RoleRef{}}, reconciler.StateAbsent, nil
+}
+
 func (r *Reconciler) clusterRole() (runtime.Object, reconciler.DesiredState, error) {
-	if *r.Logging.Spec.FluentbitSpec.Security.RoleBasedAccessControlCreate {
+	if *r.fluentbitSpec.Security.RoleBasedAccessControlCreate {
 		clusterRoleResources := []string{"pods", "namespaces"}
-		if r.Logging.Spec.FluentbitSpec.FilterKubernetes.UseKubelet == "On" {
+		if r.fluentbitSpec.FilterKubernetes.UseKubelet == "On" {
 			clusterRoleResources = append(clusterRoleResources, "nodes", "nodes/proxy")
 		}
 		return &rbacv1.ClusterRole{
@@ -46,17 +88,17 @@ func (r *Reconciler) clusterRole() (runtime.Object, reconciler.DesiredState, err
 }
 
 func (r *Reconciler) clusterRoleBinding() (runtime.Object, reconciler.DesiredState, error) {
-	if *r.Logging.Spec.FluentbitSpec.Security.RoleBasedAccessControlCreate {
+	if *r.fluentbitSpec.Security.RoleBasedAccessControlCreate {
 		return &rbacv1.ClusterRoleBinding{
 			ObjectMeta: r.FluentbitObjectMetaClusterScope(clusterRoleBindingName),
 			RoleRef: rbacv1.RoleRef{
 				Kind:     "ClusterRole",
-				APIGroup: "rbac.authorization.k8s.io",
-				Name:     r.Logging.QualifiedName(clusterRoleName),
+				APIGroup: rbacv1.GroupName,
+				Name:     r.nameProvider.ComponentName(clusterRoleName),
 			},
 			Subjects: []rbacv1.Subject{
 				{
-					Kind:      "ServiceAccount",
+					Kind:      rbacv1.ServiceAccountKind,
 					Name:      r.getServiceAccount(),
 					Namespace: r.Logging.Spec.ControlNamespace,
 				},
@@ -69,11 +111,11 @@ func (r *Reconciler) clusterRoleBinding() (runtime.Object, reconciler.DesiredSta
 }
 
 func (r *Reconciler) serviceAccount() (runtime.Object, reconciler.DesiredState, error) {
-	if *r.Logging.Spec.FluentbitSpec.Security.RoleBasedAccessControlCreate && r.Logging.Spec.FluentbitSpec.Security.ServiceAccount == "" {
+	if *r.fluentbitSpec.Security.RoleBasedAccessControlCreate && r.fluentbitSpec.Security.ServiceAccount == "" {
 		desired := &corev1.ServiceAccount{
 			ObjectMeta: r.FluentbitObjectMeta(defaultServiceAccountName),
 		}
-		err := merge.Merge(desired, r.Logging.Spec.FluentbitSpec.ServiceAccountOverrides)
+		err := merge.Merge(desired, r.fluentbitSpec.ServiceAccountOverrides)
 		if err != nil {
 			return desired, reconciler.StatePresent, errors.WrapIf(err, "unable to merge overrides to base object")
 		}

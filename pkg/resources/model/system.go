@@ -19,28 +19,30 @@ import (
 	"strconv"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/common"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/input"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/plugins"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	"github.com/go-logr/logr"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/common"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/input"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/plugins"
 )
 
 func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logger logr.Logger) (*types.System, error) {
 	logging := resources.Logging
+	_, fluentdSpec := resources.GetFluentd()
 
 	var forwardInput *input.ForwardInputConfig
-	if logging.Spec.FluentdSpec.ForwardInputConfig != nil {
-		forwardInput = logging.Spec.FluentdSpec.ForwardInputConfig
+	if fluentdSpec != nil && fluentdSpec.ForwardInputConfig != nil {
+		forwardInput = fluentdSpec.ForwardInputConfig
 	} else {
 		forwardInput = input.NewForwardInputConfig()
 	}
 
-	if logging.Spec.FluentdSpec != nil && logging.Spec.FluentdSpec.TLS.Enabled {
+	if fluentdSpec != nil && fluentdSpec.TLS.Enabled {
 		forwardInput.Transport = &common.Transport{
 			Version:        "TLSv1_2",
 			CaPath:         "/fluentd/tls/ca.crt",
@@ -50,7 +52,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 		}
 		forwardInput.Security = &common.Security{
 			SelfHostname: "fluentd",
-			SharedKey:    logging.Spec.FluentdSpec.TLS.SharedKey,
+			SharedKey:    fluentdSpec.TLS.SharedKey,
 		}
 	}
 
@@ -60,7 +62,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 	}
 
 	router := types.NewRouter("main", types.Params{
-		"metrics": strconv.FormatBool(logging.Spec.FluentdSpec.Metrics != nil),
+		"metrics": strconv.FormatBool(fluentdSpec.Metrics != nil),
 	})
 
 	var globalFilters []types.Filter
@@ -76,11 +78,12 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 
 	builder := types.NewSystemBuilder(rootInput, globalFilters, router)
 
-	for _, flowCr := range resources.Flows {
-		flow, err := FlowForFlow(flowCr, resources.ClusterOutputs, resources.Outputs, secrets)
+	for _, flowCr := range resources.Fluentd.Flows {
+		flow, err := FlowForFlow(flowCr, resources.Fluentd.ClusterOutputs, resources.Fluentd.Outputs, secrets)
 		if err != nil {
 			if logging.Spec.SkipInvalidResources {
-				logger.Error(err, "Flow contains errors.")
+				logger.Error(err, "Flow contains errors, skipping.")
+				continue
 			} else {
 				return nil, err
 			}
@@ -90,11 +93,12 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 			return nil, err
 		}
 	}
-	for _, flowCr := range resources.ClusterFlows {
-		flow, err := FlowForClusterFlow(flowCr, resources.ClusterOutputs, secrets)
+	for _, flowCr := range resources.Fluentd.ClusterFlows {
+		flow, err := FlowForClusterFlow(flowCr, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			if logging.Spec.SkipInvalidResources {
-				logger.Error(err, "ClusterFlow contains errors.")
+				logger.Error(err, "ClusterFlow contains errors, skipping.")
+				continue
 			} else {
 				return nil, err
 			}
@@ -105,7 +109,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 		}
 	}
 	if resources.Logging.Spec.DefaultFlowSpec != nil {
-		flow, err := FlowForDefaultFlow(resources.Logging, resources.ClusterOutputs, secrets)
+		flow, err := FlowForDefaultFlow(resources.Logging, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			// TODO set flow status to error?
 			return nil, err
@@ -119,7 +123,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 	// Set ErrorOutput
 	var errorFlow *types.Flow
 	if resources.Logging.Spec.ErrorOutputRef != "" {
-		errorFlow, err = FlowForError(resources.Logging.Spec.ErrorOutputRef, resources.ClusterOutputs, secrets)
+		errorFlow, err = FlowForError(resources.Logging.Spec.ErrorOutputRef, resources.Fluentd.ClusterOutputs, secrets)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +153,7 @@ func CreateSystem(resources LoggingResources, secrets SecretLoaderFactory, logge
 	}
 
 	// TODO: wow such hack
-	if logging.Spec.FluentdSpec.Workers > 1 {
+	if fluentdSpec.Workers > 1 {
 		for _, flow := range system.Flows {
 			for _, output := range flow.Outputs {
 				unsetBufferPath(output)
@@ -256,7 +260,7 @@ func FlowForFlow(flow v1beta1.Flow, clusterOutputs ClusterOutputs, outputs Outpu
 
 	flowID := fmt.Sprintf("flow:%s:%s", flow.Namespace, flow.Name)
 
-	result, err := types.NewFlow(matches, flowID, flow.Name, flow.Namespace)
+	result, err := types.NewFlow(matches, flowID, flow.Name, flow.Namespace, flow.Spec.FlowLabel, flow.Spec.IncludeLabelInRouter)
 	if err != nil {
 		return nil, err
 	}
@@ -266,10 +270,14 @@ func FlowForFlow(flow v1beta1.Flow, clusterOutputs ClusterOutputs, outputs Outpu
 	var allOutputs []types.Output
 	for _, outputRef := range flow.Spec.GlobalOutputRefs {
 		if clusterOutput := clusterOutputs.FindByName(outputRef); clusterOutput != nil {
+			if clusterOutput.Spec.Protected {
+				errs = errors.Append(errs, errors.Errorf("referenced clusteroutput is protected: %s", outputRef))
+				continue
+			}
 			outputID := fmt.Sprintf("%s:clusteroutput:%s:%s", flowID, clusterOutput.Namespace, clusterOutput.Name)
 			plugin, err := plugins.CreateOutput(clusterOutput.Spec.OutputSpec, outputID, secrets.OutputSecretLoaderForNamespace(clusterOutput.Namespace))
 			if err != nil {
-				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %q", outputRef))
+				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %s", outputRef))
 				continue
 			}
 			allOutputs = append(allOutputs, plugin)
@@ -282,12 +290,12 @@ func FlowForFlow(flow v1beta1.Flow, clusterOutputs ClusterOutputs, outputs Outpu
 			outputID := fmt.Sprintf("%s:output:%s:%s", flowID, output.Namespace, output.Name)
 			plugin, err := plugins.CreateOutput(output.Spec, outputID, secrets.OutputSecretLoaderForNamespace(output.Namespace))
 			if err != nil {
-				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %q", outputRef))
+				errs = errors.Append(errs, errors.WrapIff(err, "failed to create configured output %s/%s", output.Namespace, output.Name))
 				continue
 			}
 			allOutputs = append(allOutputs, plugin)
 		} else {
-			errs = errors.Append(errs, errors.Errorf("referenced output not found: %s", outputRef))
+			errs = errors.Append(errs, errors.Errorf("referenced output %s not found for flow %s/%s", outputRef, flow.Namespace, flow.Name))
 		}
 	}
 	result.WithOutputs(allOutputs...)
@@ -315,20 +323,22 @@ func FlowForClusterFlow(flow v1beta1.ClusterFlow, clusterOutputs ClusterOutputs,
 
 			if match.ClusterSelect != nil {
 				matches = append(matches, types.FlowMatch{
-					Labels:         match.ClusterSelect.Labels,
-					ContainerNames: match.ClusterSelect.ContainerNames,
-					Hosts:          match.ClusterSelect.Hosts,
-					Namespaces:     match.ClusterSelect.Namespaces,
-					Negate:         false,
+					Labels:          match.ClusterSelect.Labels,
+					NamespaceLabels: match.ClusterSelect.NamespaceLabels,
+					ContainerNames:  match.ClusterSelect.ContainerNames,
+					Hosts:           match.ClusterSelect.Hosts,
+					Namespaces:      match.ClusterSelect.Namespaces,
+					Negate:          false,
 				})
 			}
 			if match.ClusterExclude != nil {
 				matches = append(matches, types.FlowMatch{
-					Labels:         match.ClusterExclude.Labels,
-					ContainerNames: match.ClusterExclude.ContainerNames,
-					Hosts:          match.ClusterExclude.Hosts,
-					Namespaces:     match.ClusterExclude.Namespaces,
-					Negate:         true,
+					Labels:          match.ClusterExclude.Labels,
+					NamespaceLabels: match.ClusterExclude.NamespaceLabels,
+					ContainerNames:  match.ClusterExclude.ContainerNames,
+					Hosts:           match.ClusterExclude.Hosts,
+					Namespaces:      match.ClusterExclude.Namespaces,
+					Negate:          true,
 				})
 			}
 		}
@@ -344,7 +354,7 @@ func FlowForClusterFlow(flow v1beta1.ClusterFlow, clusterOutputs ClusterOutputs,
 
 	flowID := fmt.Sprintf("clusterflow:%s:%s", flow.Namespace, flow.Name)
 
-	result, err := types.NewFlow(matches, flowID, flow.Name, flow.Namespace)
+	result, err := types.NewFlow(matches, flowID, flow.Name, flow.Namespace, flow.Spec.FlowLabel, flow.Spec.IncludeLabelInRouter)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +391,7 @@ func FlowForDefaultFlow(logging v1beta1.Logging, clusterOutputs ClusterOutputs, 
 
 	flowID := fmt.Sprintf("logging:%s:%s", logging.Namespace, logging.Name)
 
-	result, err := types.NewFlow([]types.FlowMatch{}, flowID, logging.Name, logging.Namespace)
+	result, err := types.NewFlow([]types.FlowMatch{}, flowID, logging.Name, logging.Namespace, logging.Spec.DefaultFlowSpec.FlowLabel, logging.Spec.DefaultFlowSpec.IncludeLabelInRouter)
 	if err != nil {
 		return nil, err
 	}

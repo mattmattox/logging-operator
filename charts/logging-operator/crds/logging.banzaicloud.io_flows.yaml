@@ -1,11 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.6.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: flows.logging.banzaicloud.io
 spec:
   group: logging.banzaicloud.io
@@ -60,7 +58,13 @@ spec:
                           type: string
                         n_lines:
                           type: integer
+                        partial_cri_logtag_key:
+                          type: string
+                        partial_cri_stream_key:
+                          type: string
                         partial_key:
+                          type: string
+                        partial_metadata_format:
                           type: string
                         partial_value:
                           type: string
@@ -71,6 +75,8 @@ spec:
                         timeout_label:
                           type: string
                         use_first_timestamp:
+                          type: boolean
+                        use_partial_cri_logtag:
                           type: boolean
                         use_partial_metadata:
                           type: string
@@ -90,6 +96,8 @@ spec:
                           items:
                             type: string
                           type: array
+                        match_tag:
+                          type: string
                         max_bytes:
                           type: integer
                         max_lines:
@@ -122,153 +130,15 @@ spec:
                         use_record_as_seed:
                           type: boolean
                       type: object
-                    enhanceK8s:
-                      properties:
-                        api_groups:
-                          items:
-                            type: string
-                          type: array
-                        bearer_token_file:
-                          type: string
-                        ca_file:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        cache_refresh:
-                          type: integer
-                        cache_refresh_variation:
-                          type: integer
-                        cache_size:
-                          type: integer
-                        cache_ttl:
-                          type: integer
-                        client_cert:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        client_key:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        core_api_versions:
-                          items:
-                            type: string
-                          type: array
-                        data_type:
-                          type: string
-                        in_namespace_path:
-                          items:
-                            type: string
-                          type: array
-                        in_pod_path:
-                          items:
-                            type: string
-                          type: array
-                        kubernetes_url:
-                          type: string
-                        secret_dir:
-                          type: string
-                        ssl_partial_chain:
-                          type: boolean
-                        verify_ssl:
-                          type: boolean
-                      type: object
                     geoip:
                       properties:
                         backend_library:
                           type: string
-                        geoip_2_database:
-                          type: string
                         geoip_database:
                           type: string
                         geoip_lookup_keys:
+                          type: string
+                        geoip2_database:
                           type: string
                         records:
                           items:
@@ -394,12 +264,14 @@ spec:
                                         key:
                                           type: string
                                         name:
+                                          default: ""
                                           type: string
                                         optional:
                                           type: boolean
                                       required:
                                       - key
                                       type: object
+                                      x-kubernetes-map-type: atomic
                                   type: object
                                 value:
                                   type: string
@@ -410,12 +282,14 @@ spec:
                                         key:
                                           type: string
                                         name:
+                                          default: ""
                                           type: string
                                         optional:
                                           type: boolean
                                       required:
                                       - key
                                       type: object
+                                      x-kubernetes-map-type: atomic
                                   type: object
                               type: object
                             delimiter:
@@ -485,12 +359,14 @@ spec:
                                               key:
                                                 type: string
                                               name:
+                                                default: ""
                                                 type: string
                                               optional:
                                                 type: boolean
                                             required:
                                             - key
                                             type: object
+                                            x-kubernetes-map-type: atomic
                                         type: object
                                       value:
                                         type: string
@@ -501,12 +377,14 @@ spec:
                                               key:
                                                 type: string
                                               name:
+                                                default: ""
                                                 type: string
                                               optional:
                                                 type: boolean
                                             required:
                                             - key
                                             type: object
+                                            x-kubernetes-map-type: atomic
                                         type: object
                                     type: object
                                   estimate_current_event:
@@ -593,12 +471,14 @@ spec:
                                           key:
                                             type: string
                                           name:
+                                            default: ""
                                             type: string
                                           optional:
                                             type: boolean
                                         required:
                                         - key
                                         type: object
+                                        x-kubernetes-map-type: atomic
                                     type: object
                                   value:
                                     type: string
@@ -609,12 +489,14 @@ spec:
                                           key:
                                             type: string
                                           name:
+                                            default: ""
                                             type: string
                                           optional:
                                             type: boolean
                                         required:
                                         - key
                                         type: object
+                                        x-kubernetes-map-type: atomic
                                     type: object
                                 type: object
                               delimiter:
@@ -684,12 +566,14 @@ spec:
                                                 key:
                                                   type: string
                                                 name:
+                                                  default: ""
                                                   type: string
                                                 optional:
                                                   type: boolean
                                               required:
                                               - key
                                               type: object
+                                              x-kubernetes-map-type: atomic
                                           type: object
                                         value:
                                           type: string
@@ -700,12 +584,14 @@ spec:
                                                 key:
                                                   type: string
                                                 name:
+                                                  default: ""
                                                   type: string
                                                 optional:
                                                   type: boolean
                                               required:
                                               - key
                                               type: object
+                                              x-kubernetes-map-type: atomic
                                           type: object
                                       type: object
                                     estimate_current_event:
@@ -878,64 +764,11 @@ spec:
                         output_type:
                           type: string
                       type: object
-                    sumologic:
-                      properties:
-                        collector_key_name:
-                          type: string
-                        collector_value:
-                          type: string
-                        exclude_container_regex:
-                          type: string
-                        exclude_facility_regex:
-                          type: string
-                        exclude_host_regex:
-                          type: string
-                        exclude_namespace_regex:
-                          type: string
-                        exclude_pod_regex:
-                          type: string
-                        exclude_priority_regex:
-                          type: string
-                        exclude_unit_regex:
-                          type: string
-                        log_format:
-                          type: string
-                        source_category:
-                          type: string
-                        source_category_key_name:
-                          type: string
-                        source_category_prefix:
-                          type: string
-                        source_category_replace_dash:
-                          type: string
-                        source_host:
-                          type: string
-                        source_host_key_name:
-                          type: string
-                        source_name:
-                          type: string
-                        source_name_key_name:
-                          type: string
-                        tracing_annotation_prefix:
-                          type: string
-                        tracing_container_name:
-                          type: string
-                        tracing_format:
-                          type: boolean
-                        tracing_host:
-                          type: string
-                        tracing_label_prefix:
-                          type: string
-                        tracing_namespace:
-                          type: string
-                        tracing_pod:
-                          type: string
-                        tracing_pod_id:
-                          type: string
-                      type: object
                     tag_normaliser:
                       properties:
                         format:
+                          type: string
+                        match_tag:
                           type: string
                       type: object
                     throttle:
@@ -953,12 +786,27 @@ spec:
                         group_warning_delay_s:
                           type: integer
                       type: object
+                    useragent:
+                      properties:
+                        delete_key:
+                          type: boolean
+                        flatten:
+                          type: boolean
+                        key_name:
+                          type: string
+                        out_key:
+                          type: string
+                      type: object
                   type: object
                 type: array
+              flowLabel:
+                type: string
               globalOutputRefs:
                 items:
                   type: string
                 type: array
+              includeLabelInRouter:
+                type: boolean
               localOutputRefs:
                 items:
                   type: string
@@ -979,6 +827,10 @@ spec:
                             type: string
                           type: array
                         labels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        namespace_labels:
                           additionalProperties:
                             type: string
                           type: object
@@ -1067,7 +919,13 @@ spec:
                           type: string
                         n_lines:
                           type: integer
+                        partial_cri_logtag_key:
+                          type: string
+                        partial_cri_stream_key:
+                          type: string
                         partial_key:
+                          type: string
+                        partial_metadata_format:
                           type: string
                         partial_value:
                           type: string
@@ -1078,6 +936,8 @@ spec:
                         timeout_label:
                           type: string
                         use_first_timestamp:
+                          type: boolean
+                        use_partial_cri_logtag:
                           type: boolean
                         use_partial_metadata:
                           type: string
@@ -1097,6 +957,8 @@ spec:
                           items:
                             type: string
                           type: array
+                        match_tag:
+                          type: string
                         max_bytes:
                           type: integer
                         max_lines:
@@ -1129,153 +991,15 @@ spec:
                         use_record_as_seed:
                           type: boolean
                       type: object
-                    enhanceK8s:
-                      properties:
-                        api_groups:
-                          items:
-                            type: string
-                          type: array
-                        bearer_token_file:
-                          type: string
-                        ca_file:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        cache_refresh:
-                          type: integer
-                        cache_refresh_variation:
-                          type: integer
-                        cache_size:
-                          type: integer
-                        cache_ttl:
-                          type: integer
-                        client_cert:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        client_key:
-                          properties:
-                            mountFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                            value:
-                              type: string
-                            valueFrom:
-                              properties:
-                                secretKeyRef:
-                                  properties:
-                                    key:
-                                      type: string
-                                    name:
-                                      type: string
-                                    optional:
-                                      type: boolean
-                                  required:
-                                  - key
-                                  type: object
-                              type: object
-                          type: object
-                        core_api_versions:
-                          items:
-                            type: string
-                          type: array
-                        data_type:
-                          type: string
-                        in_namespace_path:
-                          items:
-                            type: string
-                          type: array
-                        in_pod_path:
-                          items:
-                            type: string
-                          type: array
-                        kubernetes_url:
-                          type: string
-                        secret_dir:
-                          type: string
-                        ssl_partial_chain:
-                          type: boolean
-                        verify_ssl:
-                          type: boolean
-                      type: object
                     geoip:
                       properties:
                         backend_library:
                           type: string
-                        geoip_2_database:
-                          type: string
                         geoip_database:
                           type: string
                         geoip_lookup_keys:
+                          type: string
+                        geoip2_database:
                           type: string
                         records:
                           items:
@@ -1401,12 +1125,14 @@ spec:
                                         key:
                                           type: string
                                         name:
+                                          default: ""
                                           type: string
                                         optional:
                                           type: boolean
                                       required:
                                       - key
                                       type: object
+                                      x-kubernetes-map-type: atomic
                                   type: object
                                 value:
                                   type: string
@@ -1417,12 +1143,14 @@ spec:
                                         key:
                                           type: string
                                         name:
+                                          default: ""
                                           type: string
                                         optional:
                                           type: boolean
                                       required:
                                       - key
                                       type: object
+                                      x-kubernetes-map-type: atomic
                                   type: object
                               type: object
                             delimiter:
@@ -1492,12 +1220,14 @@ spec:
                                               key:
                                                 type: string
                                               name:
+                                                default: ""
                                                 type: string
                                               optional:
                                                 type: boolean
                                             required:
                                             - key
                                             type: object
+                                            x-kubernetes-map-type: atomic
                                         type: object
                                       value:
                                         type: string
@@ -1508,12 +1238,14 @@ spec:
                                               key:
                                                 type: string
                                               name:
+                                                default: ""
                                                 type: string
                                               optional:
                                                 type: boolean
                                             required:
                                             - key
                                             type: object
+                                            x-kubernetes-map-type: atomic
                                         type: object
                                     type: object
                                   estimate_current_event:
@@ -1600,12 +1332,14 @@ spec:
                                           key:
                                             type: string
                                           name:
+                                            default: ""
                                             type: string
                                           optional:
                                             type: boolean
                                         required:
                                         - key
                                         type: object
+                                        x-kubernetes-map-type: atomic
                                     type: object
                                   value:
                                     type: string
@@ -1616,12 +1350,14 @@ spec:
                                           key:
                                             type: string
                                           name:
+                                            default: ""
                                             type: string
                                           optional:
                                             type: boolean
                                         required:
                                         - key
                                         type: object
+                                        x-kubernetes-map-type: atomic
                                     type: object
                                 type: object
                               delimiter:
@@ -1691,12 +1427,14 @@ spec:
                                                 key:
                                                   type: string
                                                 name:
+                                                  default: ""
                                                   type: string
                                                 optional:
                                                   type: boolean
                                               required:
                                               - key
                                               type: object
+                                              x-kubernetes-map-type: atomic
                                           type: object
                                         value:
                                           type: string
@@ -1707,12 +1445,14 @@ spec:
                                                 key:
                                                   type: string
                                                 name:
+                                                  default: ""
                                                   type: string
                                                 optional:
                                                   type: boolean
                                               required:
                                               - key
                                               type: object
+                                              x-kubernetes-map-type: atomic
                                           type: object
                                       type: object
                                     estimate_current_event:
@@ -1885,64 +1625,11 @@ spec:
                         output_type:
                           type: string
                       type: object
-                    sumologic:
-                      properties:
-                        collector_key_name:
-                          type: string
-                        collector_value:
-                          type: string
-                        exclude_container_regex:
-                          type: string
-                        exclude_facility_regex:
-                          type: string
-                        exclude_host_regex:
-                          type: string
-                        exclude_namespace_regex:
-                          type: string
-                        exclude_pod_regex:
-                          type: string
-                        exclude_priority_regex:
-                          type: string
-                        exclude_unit_regex:
-                          type: string
-                        log_format:
-                          type: string
-                        source_category:
-                          type: string
-                        source_category_key_name:
-                          type: string
-                        source_category_prefix:
-                          type: string
-                        source_category_replace_dash:
-                          type: string
-                        source_host:
-                          type: string
-                        source_host_key_name:
-                          type: string
-                        source_name:
-                          type: string
-                        source_name_key_name:
-                          type: string
-                        tracing_annotation_prefix:
-                          type: string
-                        tracing_container_name:
-                          type: string
-                        tracing_format:
-                          type: boolean
-                        tracing_host:
-                          type: string
-                        tracing_label_prefix:
-                          type: string
-                        tracing_namespace:
-                          type: string
-                        tracing_pod:
-                          type: string
-                        tracing_pod_id:
-                          type: string
-                      type: object
                     tag_normaliser:
                       properties:
                         format:
+                          type: string
+                        match_tag:
                           type: string
                       type: object
                     throttle:
@@ -1960,12 +1647,27 @@ spec:
                         group_warning_delay_s:
                           type: integer
                       type: object
+                    useragent:
+                      properties:
+                        delete_key:
+                          type: boolean
+                        flatten:
+                          type: boolean
+                        key_name:
+                          type: string
+                        out_key:
+                          type: string
+                      type: object
                   type: object
                 type: array
+              flowLabel:
+                type: string
               globalOutputRefs:
                 items:
                   type: string
                 type: array
+              includeLabelInRouter:
+                type: boolean
               localOutputRefs:
                 items:
                   type: string
@@ -1986,6 +1688,10 @@ spec:
                             type: string
                           type: array
                         labels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        namespace_labels:
                           additionalProperties:
                             type: string
                           type: object
@@ -2032,9 +1738,3 @@ spec:
     storage: true
     subresources:
       status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []

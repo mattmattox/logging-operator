@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestSQSOutputConfig(t *testing.T) {
@@ -31,7 +31,6 @@ region: us-east-2
 buffer:
   flush_thread_count: 8
   flush_interval: 5s
-  chunk_limit_size: 8M
   queue_limit_length: 512
   retry_max_interval: 30
   retry_forever: true
@@ -45,7 +44,6 @@ buffer:
     region us-east-2
     <buffer tag,time>
       @type file
-      chunk_limit_size 8M
       flush_interval 5s
       flush_thread_count 8
       path /buffers/test.*.buffer

@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,51 +17,56 @@ package fluentd
 import (
 	"strings"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
-func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim) (*batchv1.Job, error) {
-	bufVolName := r.Logging.QualifiedName(r.Logging.Spec.FluentdSpec.BufferStorageVolume.PersistentVolumeClaim.PersistentVolumeSource.ClaimName)
+func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim, fluentdSpec v1beta1.FluentdSpec) (*batchv1.Job, error) {
+	bufVolName := r.Logging.QualifiedName(fluentdSpec.BufferStorageVolume.PersistentVolumeClaim.PersistentVolumeSource.ClaimName)
 
-	fluentdContainer := fluentContainer(withoutFluentOutLogrotate(r.Logging.Spec.FluentdSpec))
+	fluentdContainer := fluentContainer(withoutFluentOutLogrotate(&fluentdSpec))
 	fluentdContainer.VolumeMounts = append(fluentdContainer.VolumeMounts, corev1.VolumeMount{
 		Name:      bufVolName,
 		MountPath: bufferPath,
 	})
 	containers := []corev1.Container{
 		fluentdContainer,
-		drainWatchContainer(&r.Logging.Spec.FluentdSpec.Scaling.Drain, bufVolName),
+		drainWatchContainer(&fluentdSpec.Scaling.Drain, bufVolName),
 	}
 	if c := r.bufferMetricsSidecarContainer(); c != nil {
 		containers = append(containers, *c)
 	}
 
+	var initContainers []corev1.Container
+	if i := generateInitContainer(fluentdSpec); i != nil {
+		initContainers = append(initContainers, *i)
+	}
+	if c := r.tmpDirHackContainer(); c != nil {
+		initContainers = append(initContainers, *c)
+	}
+
 	spec := batchv1.JobSpec{
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels:      r.Logging.GetFluentdLabels(ComponentDrainer),
-				Annotations: r.Logging.Spec.FluentdSpec.Scaling.Drain.Annotations,
+				Labels:      r.getDrainerLabels(fluentdSpec),
+				Annotations: fluentdSpec.Scaling.Drain.Annotations,
 			},
 			Spec: corev1.PodSpec{
 				Volumes:                   r.generateVolume(),
 				ServiceAccountName:        r.getServiceAccount(),
-				ImagePullSecrets:          r.Logging.Spec.FluentdSpec.Image.ImagePullSecrets,
+				ImagePullSecrets:          fluentdSpec.Image.ImagePullSecrets,
+				InitContainers:            initContainers,
 				Containers:                containers,
-				NodeSelector:              r.Logging.Spec.FluentdSpec.NodeSelector,
-				Tolerations:               r.Logging.Spec.FluentdSpec.Tolerations,
-				Affinity:                  r.Logging.Spec.FluentdSpec.Affinity,
-				TopologySpreadConstraints: r.Logging.Spec.FluentdSpec.TopologySpreadConstraints,
-				PriorityClassName:         r.Logging.Spec.FluentdSpec.PodPriorityClassName,
-				SecurityContext: &corev1.PodSecurityContext{
-					RunAsNonRoot: r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.RunAsNonRoot,
-					FSGroup:      r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.FSGroup,
-					RunAsUser:    r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.RunAsUser,
-					RunAsGroup:   r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.RunAsGroup,
-				},
-				RestartPolicy: corev1.RestartPolicyNever,
+				NodeSelector:              fluentdSpec.NodeSelector,
+				Tolerations:               fluentdSpec.Tolerations,
+				Affinity:                  fluentdSpec.Affinity,
+				TopologySpreadConstraints: fluentdSpec.TopologySpreadConstraints,
+				PriorityClassName:         fluentdSpec.PodPriorityClassName,
+				SecurityContext:           fluentdSpec.Security.PodSecurityContext,
+				RestartPolicy:             corev1.RestartPolicyNever,
 			},
 		},
 	}
@@ -74,7 +79,7 @@ func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim) (*batchv1.J
 			},
 		},
 	})
-	for _, n := range r.Logging.Spec.FluentdSpec.ExtraVolumes {
+	for _, n := range fluentdSpec.ExtraVolumes {
 		if err := n.ApplyVolumeForPodSpec(&spec.Template.Spec); err != nil {
 			return nil, err
 		}
@@ -92,6 +97,10 @@ func drainWatchContainer(cfg *v1beta1.FluentdDrainConfig, bufferVolumeName strin
 				Name:  "BUFFER_PATH",
 				Value: bufferPath,
 			},
+			{
+				Name:  "CHECK_INTERVAL",
+				Value: drainerCheckInterval,
+			},
 		},
 		Image:           cfg.Image.RepositoryWithTag(),
 		ImagePullPolicy: corev1.PullPolicy(cfg.Image.PullPolicy),
@@ -103,6 +112,8 @@ func drainWatchContainer(cfg *v1beta1.FluentdDrainConfig, bufferVolumeName strin
 				ReadOnly:  true,
 			},
 		},
+		Resources:       *cfg.Resources,
+		SecurityContext: cfg.SecurityContext,
 	}
 }
 
@@ -110,4 +121,14 @@ func withoutFluentOutLogrotate(spec *v1beta1.FluentdSpec) *v1beta1.FluentdSpec {
 	res := spec.DeepCopy()
 	res.FluentOutLogrotate = nil
 	return res
+}
+
+func (r *Reconciler) getDrainerLabels(fluentdSpec v1beta1.FluentdSpec) map[string]string {
+	labels := r.Logging.GetFluentdLabels(ComponentDrainer, fluentdSpec)
+
+	for key, value := range fluentdSpec.Scaling.Drain.Labels {
+		labels[key] = value
+	}
+
+	return labels
 }

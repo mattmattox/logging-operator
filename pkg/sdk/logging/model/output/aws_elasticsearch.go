@@ -15,9 +15,9 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/utils"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Amazon Elasticsearch"
@@ -25,17 +25,26 @@ import (
 type _hugoAwsElasticsearch interface{} //nolint:deadcode,unused
 
 // +docName:"Amazon Elasticsearch output plugin for Fluentd"
-//  More info at https://github.com/atomita/fluent-plugin-aws-elasticsearch-service
-//
-// #### Example output configurations
-// ```yaml
-// spec:
-//   kinesisStream:
-//     stream_name: example-stream-name
-//     region: us-east-1
-//     format:
-//       type: json
-// ```
+/*
+For details, see https://github.com/atomita/fluent-plugin-aws-elasticsearch-service
+
+## Example output configurations
+{{< highlight yaml >}}
+spec:
+  awsElasticsearch:
+    logstash_format: true
+    include_tag_key: true
+    tag_key: "@log_name"
+    flush_interval: 1s
+    endpoint:
+      url: https://CLUSTER_ENDPOINT_URL
+      region: eu-west-1
+      access_key_id:
+        value: aws-key
+      secret_access_key:
+        value: aws_secret
+{{</ highlight >}}
+*/
 type _docAwsElasticsearch interface{} //nolint:deadcode,unused
 
 // +name:"Amazon Elasticsearch"

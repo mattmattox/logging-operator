@@ -17,16 +17,19 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestHTTP(t *testing.T) {
 	CONFIG := []byte(`
+compress: gzip
 endpoint: http://logserver.com:9000/api
+headers_from_placeholders: {"x-foo-bar":"${$.foo.bar}","x-tag":"app-${tag}"}
 retryable_response_codes: [503,504]
+reuse_connections: true
 format:
   type: json
 buffer:
@@ -44,11 +47,13 @@ auth:
   <match **>
     @type http
     @id test
+    compress gzip
     endpoint http://logserver.com:9000/api
-	retryable_response_codes [503,504]
+    headers_from_placeholders {"x-foo-bar":"${$.foo.bar}","x-tag":"app-${tag}"}
+    retryable_response_codes [503,504]
+    reuse_connections true
     <buffer tag,time>
       @type file
-	  chunk_limit_size 8MB
       path /buffers/test.*.buffer
       retry_forever true
       timekey 1m

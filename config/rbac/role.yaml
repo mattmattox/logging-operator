@@ -1,28 +1,18 @@
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  creationTimestamp: null
   name: manager-role
 rules:
 - apiGroups:
   - ""
   resources:
   - configmaps
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
+  - persistentvolumeclaims
+  - pods
   - secrets
+  - serviceaccounts
+  - services
   verbs:
   - create
   - delete
@@ -41,42 +31,6 @@ rules:
   verbs:
   - get
   - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims
-  - pods
-  - serviceaccounts
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - ""
@@ -107,31 +61,7 @@ rules:
   - extensions
   resources:
   - daemonsets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  - extensions
-  resources:
   - deployments
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  - extensions
-  resources:
   - statefulsets
   verbs:
   - create
@@ -198,25 +128,6 @@ rules:
   - logging-extensions.banzaicloud.io
   resources:
   - eventtailers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - logging-extensions.banzaicloud.io
-  resources:
-  - eventtailers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - logging-extensions.banzaicloud.io
-  resources:
   - hosttailers
   verbs:
   - create
@@ -229,6 +140,7 @@ rules:
 - apiGroups:
   - logging-extensions.banzaicloud.io
   resources:
+  - eventtailers/status
   - hosttailers/status
   verbs:
   - get
@@ -240,8 +152,17 @@ rules:
   - clusterflows
   - clusteroutputs
   - flows
+  - fluentbitagents
+  - fluentdconfigs
+  - loggingroutes
   - loggings
+  - nodeagents
   - outputs
+  - syslogngclusterflows
+  - syslogngclusteroutputs
+  - syslogngconfigs
+  - syslogngflows
+  - syslogngoutputs
   verbs:
   - create
   - delete
@@ -256,11 +177,26 @@ rules:
   - clusterflows/status
   - clusteroutputs/status
   - flows/status
+  - fluentbitagents/status
+  - fluentdconfigs/status
+  - loggingroutes/status
   - loggings/status
+  - nodeagents/status
   - outputs/status
+  - syslogngclusterflows/status
+  - syslogngclusteroutputs/status
+  - syslogngconfigs/status
+  - syslogngflows/status
+  - syslogngoutputs/status
   verbs:
   - get
   - patch
+  - update
+- apiGroups:
+  - logging.banzaicloud.io
+  resources:
+  - loggings/finalizers
+  verbs:
   - update
 - apiGroups:
   - monitoring.coreos.com
@@ -276,9 +212,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+  - policy
   resources:
-  - clusterrolebindings
+  - poddisruptionbudgets
   verbs:
   - create
   - delete
@@ -303,9 +239,22 @@ rules:
   - update
   - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+  - security.openshift.io
+  resourceNames:
+  - anyuid
+  - privileged
   resources:
-  - clusterroles
+  - securitycontextconstraints
+  verbs:
+  - use
+- apiGroups:
+  - telemetry.kube-logging.dev
+  resources:
+  - bridges
+  - collectors
+  - outputs
+  - subscriptions
+  - tenants
   verbs:
   - create
   - delete

@@ -50,20 +50,22 @@ type ClusterMatch struct {
 }
 
 type ClusterSelect struct {
-	Namespaces     []string          `json:"namespaces,omitempty"`
-	Labels         map[string]string `json:"labels,omitempty"`
-	Hosts          []string          `json:"hosts,omitempty"`
-	ContainerNames []string          `json:"container_names,omitempty"`
+	Namespaces      []string          `json:"namespaces,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	NamespaceLabels map[string]string `json:"namespace_labels,omitempty"`
+	Hosts           []string          `json:"hosts,omitempty"`
+	ContainerNames  []string          `json:"container_names,omitempty"`
 }
 
 type ClusterExclude struct {
-	Namespaces     []string          `json:"namespaces,omitempty"`
-	Labels         map[string]string `json:"labels,omitempty"`
-	Hosts          []string          `json:"hosts,omitempty"`
-	ContainerNames []string          `json:"container_names,omitempty"`
+	Namespaces      []string          `json:"namespaces,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	NamespaceLabels map[string]string `json:"namespace_labels,omitempty"`
+	Hosts           []string          `json:"hosts,omitempty"`
+	ContainerNames  []string          `json:"container_names,omitempty"`
 }
 
-// FlowSpec is the Kubernetes spec for Flows
+// ClusterFlowSpec is the Kubernetes spec for ClusterFlows
 type ClusterFlowSpec struct {
 	// Deprecated
 	Selectors  map[string]string `json:"selectors,omitempty"`
@@ -71,8 +73,10 @@ type ClusterFlowSpec struct {
 	Filters    []Filter          `json:"filters,omitempty"`
 	LoggingRef string            `json:"loggingRef,omitempty"`
 	// Deprecated
-	OutputRefs       []string `json:"outputRefs,omitempty"`
-	GlobalOutputRefs []string `json:"globalOutputRefs,omitempty"`
+	OutputRefs           []string `json:"outputRefs,omitempty"`
+	GlobalOutputRefs     []string `json:"globalOutputRefs,omitempty"`
+	FlowLabel            string   `json:"flowLabel,omitempty"`
+	IncludeLabelInRouter *bool    `json:"includeLabelInRouter,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Elasticsearch"
@@ -24,23 +24,26 @@ import (
 type _hugoElasticsearch interface{} //nolint:deadcode,unused
 
 // +docName:"Elasticsearch output plugin for Fluentd"
-//More info at https://github.com/uken/fluent-plugin-elasticsearch
-//>Example Deployment: [Save all logs to ElasticSearch](../../../../quickstarts/es-nginx/)
-//
-// #### Example output configurations
-// ```yaml
-// spec:
-//   elasticsearch:
-//     host: elasticsearch-elasticsearch-cluster.default.svc.cluster.local
-//     port: 9200
-//     scheme: https
-//     ssl_verify: false
-//     ssl_version: TLSv1_2
-//     buffer:
-//       timekey: 1m
-//       timekey_wait: 30s
-//       timekey_use_utc: true
-// ```
+/* For details, see [https://github.com/uken/fluent-plugin-elasticsearch](https://github.com/uken/fluent-plugin-elasticsearch).
+
+Example Deployment: [Save all logs to Elasticsearch](../../../../quickstarts/es-nginx/)
+
+## Example output configurations
+
+```yaml
+spec:
+  elasticsearch:
+    host: elasticsearch-elasticsearch-cluster.default.svc.cluster.local
+    port: 9200
+    scheme: https
+    ssl_verify: false
+    ssl_version: TLSv1_2
+    buffer:
+      timekey: 1m
+      timekey_wait: 30s
+      timekey_use_utc: true
+```
+*/
 type _docElasticsearch interface{} //nolint:deadcode,unused
 
 // +name:"Elasticsearch"
@@ -54,13 +57,13 @@ type _metaElasticsearch interface{} //nolint:deadcode,unused
 // +docName:"Elasticsearch"
 // Send your logs to Elasticsearch
 type ElasticsearchOutput struct {
-	// You can specify Elasticsearch host by this parameter. (default:localhost)
+	// You can specify the Elasticsearch host using this parameter. (default:localhost)
 	Host string `json:"host,omitempty"`
-	// You can specify Elasticsearch port by this parameter.(default: 9200)
+	// You can specify the Elasticsearch port using this parameter.(default: 9200)
 	Port int `json:"port,omitempty"`
-	// You can specify multiple Elasticsearch hosts with separator ",". If you specify hosts option, host and port options are ignored.
+	// You can specify multiple Elasticsearch hosts with separator ",". If you specify the `hosts` option, the `host` and `port` options are ignored.
 	Hosts string `json:"hosts,omitempty"`
-	// User for HTTP Basic authentication. This plugin will escape required URL encoded characters within %{} placeholders. e.g. %{demo+}
+	// User for HTTP Basic authentication. This plugin will escape required URL encoded characters within `%{}` placeholders, for example, `%{demo+}`
 	User string `json:"user,omitempty"`
 	// Password for HTTP Basic authentication.
 	// +docLink:"Secret,../secret/"
@@ -145,16 +148,16 @@ type ElasticsearchOutput struct {
 	// fail_on_detecting_es_version_retry_exceed (default: true)
 	// +kubebuilder:validation:Optional
 	FailOnDetectingEsVersionRetryExceed *bool `json:"fail_on_detecting_es_version_retry_exceed,omitempty" plugin:"default:true"`
-	// You can specify times of retry obtaining Elasticsearch version.(default: 15)
+	// You can specify the number of times to retry fetching the Elasticsearch version.(default: 15)
 	MaxRetryGetEsVersion string `json:"max_retry_get_es_version,omitempty"`
 	// You can specify HTTP request timeout.(default: 5s)
 	RequestTimeout string `json:"request_timeout,omitempty"`
 	// You can tune how the elasticsearch-transport host reloading feature works.(default: true)
 	// +kubebuilder:validation:Optional
 	ReloadConnections *bool `json:"reload_connections,omitempty" plugin:"default:true"`
-	//Indicates that the elasticsearch-transport will try to reload the nodes addresses if there is a failure while making the request, this can be useful to quickly remove a dead node from the list of addresses.(default: false)
+	//Indicates that the elasticsearch-transport will try to reload the nodes addresses if there is a failure while making the request. This can be useful to quickly remove a dead node from the list of addresses.(default: false)
 	ReloadOnFailure bool `json:"reload_on_failure,omitempty"`
-	// When reload_connections true, this is the integer number of operations after which the plugin will reload the connections. The default value is 10000.
+	// When `reload_connections` is true, this is the integer number of operations after which the plugin will reload the connections. The default value is 10000.
 	ReloadAfter string `json:"reload_after,omitempty"`
 	// You can set in the elasticsearch-transport how often dead connections from the elasticsearch-transport's pool will be resurrected.(default: 60s)
 	ResurrectAfter string `json:"resurrect_after,omitempty"`
@@ -233,6 +236,10 @@ type ElasticsearchOutput struct {
 	SnifferClassName string `json:"sniffer_class_name,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 	// Enable Index Lifecycle Management (ILM).
 	EnableIlm bool `json:"enable_ilm,omitempty"`
 	// Specify ILM policy id.
@@ -253,6 +260,11 @@ type ElasticsearchOutput struct {
 	DataStreamIlmPolicy string `json:"data_stream_ilm_policy,omitempty"`
 	// Specify whether overwriting data stream ilm policy or not.
 	DataStreamIlmPolicyOverwrite bool `json:"data_stream_ilm_policy_overwrite,omitempty"`
+	// If set to true, the output uses the [legacy index template format](https://www.elastic.co/guide/en/elasticsearch/reference/7.13/indices-templates-v1.html). Otherwise, it uses the [composable index template](https://www.elastic.co/guide/en/elasticsearch/reference/7.13/index-templates.html) format. (default: true)
+	// +kubebuilder:validation:Optional
+	UseLegacyTemplate *bool `json:"use_legacy_template,omitempty"`
+	// Option for adding gzip compression of output data. Valid options: default_compression, best_compression, best_speed, no_compression. (default: no_compression)
+	CompressionLevel string `json:"compression_level,omitempty"`
 }
 
 func (e *ElasticsearchOutput) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

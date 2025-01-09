@@ -1,6 +1,9 @@
 # Temporary Build Files
 build/_output
 build/_test
+build/_test_coverage
+# Ignore vscode devcontainer
+.devcontainer/
 # Created by https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
 ### Emacs ###
 # -*- mode: gitignore; -*-
@@ -90,7 +93,13 @@ testbin
 example/tls-cluster-forward/*.pem
 example/tls-cluster-forward/*.csr
 example/tls-cluster-forward/*.key
-
+charts/logging-operator/charts/*.tgz
 .licensei.cache
 
 .DS_Store
+
+go.work.sum
+
+# Ignore DevSpace cache and log folder and DevSpace configuration file
+.devspace/
+devspace.yaml

@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ var fluentBitConfigTemplate = `
     Grace        {{ .Grace }}
     Daemon       Off
     Log_Level    {{ .LogLevel }}
-    Parsers_File /fluent-bit/conf/parsers.conf
+    Parsers_File /fluent-bit/etc/parsers.conf
     Coro_Stack_Size    {{ .CoroStackSize }}
     {{- if .Monitor.Enabled }}
     HTTP_Server  On

@@ -16,18 +16,33 @@ package fluentbit
 
 const BaseConfigName = "fluent-bit.conf"
 const UpstreamConfigName = "upstream.conf"
+const CustomParsersConfigName = "custom-parsers.conf"
+const CRIParserConfigName = "cri-log-parser.conf"
+const StockConfigPath = "/fluent-bit/etc"
+const StockBinPath = "/fluent-bit/bin/fluent-bit"
+const OperatorConfigPath = "/fluent-bit/etc-operator"
 
 var fluentBitConfigTemplate = `
 [SERVICE]
     Flush        {{ .Flush }}
     Grace        {{ .Grace }}
+    {{- if .ForceHotReloadAfterGrace }}
+    Hot_Reload.Ensure_Thread_Safety off
+    {{- end }}
     Daemon       Off
     Log_Level    {{ .LogLevel }}
-    Parsers_File parsers.conf
+    Parsers_File {{ .DefaultParsers }}
+    {{- if .CustomParsers }}
+    Parsers_File {{ .CustomParsers }}
+    {{- end }}
     Coro_Stack_Size    {{ .CoroStackSize }}
     {{- if .Monitor.Enabled }}
     HTTP_Server  On
-    HTTP_Listen  0.0.0.0
+    {{- if .Monitor.EnabledIPv6 }}
+    HTTP_Listen  [::]
+    {{- else }}
+    Listen 0.0.0.0
+    {{- end }}
     HTTP_Port    {{ .Monitor.Port }}
     {{- end }}
     {{- range $key, $value := .BufferStorage }}
@@ -35,22 +50,27 @@ var fluentBitConfigTemplate = `
     {{ $key }}  {{$value}}
     {{- end }}
     {{- end }}
+    {{- if .HealthCheck }}
+    Health_Check On
+    {{- if.HealthCheck.HCErrorsCount }}
+    HC_Errors_Count {{ .HealthCheck.HCErrorsCount }}
+    {{- end }}
+    {{- if.HealthCheck.HCRetryFailureCount }}
+    HC_Retry_Failure_Count {{ .HealthCheck.HCRetryFailureCount }}
+    {{- end }}
+    {{- if.HealthCheck.HCPeriod }}
+    HC_Period {{ .HealthCheck.HCPeriod }}
+    {{- end }}
+    {{- end }}
 
-[INPUT]
-    Name         tail
-    {{- range $key, $value := .Input.Values }}
-    {{- if $value }}
-    {{ $key }}  {{$value}}
-    {{- end }}
-    {{- end }}
-    {{- range $id, $v := .Input.ParserN }}
-    {{- if $v }}
-    Parse_{{ $id}} {{$v}}
-    {{- end }}
-    {{- end }}
-    {{- if .Input.MultilineParser }}
-    multiline.parser {{- range $i, $v := .Input.MultilineParser }}{{ if $i }},{{ end}} {{ $v }}{{ end }}
-    {{- end }}
+{{- if .Inputs }}
+{{- range $input := .Inputs }}
+# Tenant: {{ $input.Tenant }}
+{{- template "input" $input }}
+{{- end }}
+{{- else }}
+{{- template "input" .Input }}
+{{- end }}
 
 {{- if not .DisableKubernetesFilter }}
 [FILTER]
@@ -63,7 +83,6 @@ var fluentBitConfigTemplate = `
 {{- end}}
 
 {{- if .AwsFilter }}
-
 [FILTER]
     Name        aws
     {{- range $key, $value := .AwsFilter }}
@@ -89,61 +108,118 @@ var fluentBitConfigTemplate = `
     {{- end }}
 {{- end}}
 
+{{- with $out := .FluentForwardOutput }}
+{{- range $target := $out.Targets }}
 [OUTPUT]
     Name          forward
-    Match         *
-    {{- if .Upstream.Enabled }}
-    Upstream upstream.conf
+    Match         {{ $target.Match }}
+    {{- if $out.Upstream.Enabled }}
+    Upstream      {{ $out.Upstream.Config.Path }}
     {{- else }}
-    Host          {{ .TargetHost }}
-    Port          {{ .TargetPort }}
+    Host          {{ $target.Host }}
+    Port          {{ $target.Port }}
     {{- end }}
-    {{ if .TLS.Enabled }}
+    {{- if $out.TLS.Enabled }}
     tls           On
     tls.verify    Off
     tls.ca_file   /fluent-bit/tls/ca.crt
     tls.crt_file  /fluent-bit/tls/tls.crt
     tls.key_file  /fluent-bit/tls/tls.key
-    {{- if .TLS.SharedKey }}
-    Shared_Key    {{ .TLS.SharedKey }}
+    {{- if $out.TLS.SharedKey }}
+    Shared_Key    {{ $out.TLS.SharedKey }}
     {{- else }}
     Empty_Shared_Key true
     {{- end }}
     {{- end }}
-    {{- if .Network.ConnectTimeoutSet }}
-    net.connect_timeout {{.Network.ConnectTimeout}}
-    {{- end }}
-    {{- if .Network.ConnectTimeoutLogErrorSet }}
-    net.connect_timeout_log_error {{.Network.ConnectTimeoutLogError}}
-    {{- end }}
-    {{- if .Network.DNSMode }}
-    net.dns.mode {{.Network.DNSMode}}
-    {{- end }}
-    {{- if .Network.DNSPreferIPV4Set }}
-    net.dns.prefer_ipv4 {{.Network.DNSPreferIPV4}}
-    {{- end }}
-    {{- if .Network.DNSResolver }}
-    net.dns.resolver {{.Network.DNSResolver}}
-    {{- end }}
-    {{- if .Network.KeepaliveSet}}
-    net.keepalive {{if .Network.Keepalive }}on{{else}}off{{end}}
-    {{- end }}
-    {{- if .Network.KeepaliveIdleTimeoutSet }}
-    net.keepalive_idle_timeout {{.Network.KeepaliveIdleTimeout}}
-    {{- end }}
-    {{- if .Network.KeepaliveMaxRecycleSet }}
-    net.keepalive_max_recycle {{.Network.KeepaliveMaxRecycle}}
-    {{- end }}
-    {{- if .Network.SourceAddress }}
-    net.source_address {{.Network.SourceAddress}}
-    {{- end }}
-    {{- if .ForwardOptions }}
-    {{- range $key, $value := .ForwardOptions }}
+    {{- template "network" $out }}
+    {{- with $out.Options }}
+    {{- range $key, $value := . }}
     {{- if $value }}
     {{ $key }}  {{$value}}
     {{- end }}
     {{- end }}
     {{- end }}
+{{- end }}
+{{- end }}
+
+{{- with $out := .SyslogNGOutput }}
+{{- range $target := $out.Targets }}
+[OUTPUT]
+    Name tcp
+    Match {{ $target.Match }}
+    Host {{ $target.Host }}
+    Port {{ $target.Port }}
+    Format json_lines
+    {{- with $out.JSONDateKey }}
+    json_date_key {{ . }}
+    {{- end }}
+    {{- with $out.JSONDateFormat }}
+    json_date_format {{ . }}
+    {{- end }}
+    {{- with $out.Workers }}
+    Workers {{ . }}
+    {{- end }}
+    {{- with $out.RetryLimit }}
+    Retry_Limit {{ . }}
+    {{- end }}
+    {{- template "network" $out }}
+{{- end }}
+{{- end }}
+`
+
+var fluentbitNetworkTemplate = `
+    {{- define "network" }}
+    {{- if .Network.ConnectTimeoutSet }}
+    net.connect_timeout {{ .Network.ConnectTimeout }}
+    {{- end }}
+    {{- if .Network.ConnectTimeoutLogErrorSet }}
+    net.connect_timeout_log_error {{ .Network.ConnectTimeoutLogError }}
+    {{- end }}
+    {{- if .Network.DNSMode }}
+    net.dns.mode {{ .Network.DNSMode }}
+    {{- end }}
+    {{- if .Network.DNSPreferIPV4Set }}
+    net.dns.prefer_ipv4 {{ .Network.DNSPreferIPV4 }}
+    {{- end }}
+    {{- if .Network.DNSResolver }}
+    net.dns.resolver {{ .Network.DNSResolver }}
+    {{- end }}
+    {{- if .Network.KeepaliveSet}}
+    net.keepalive {{if .Network.Keepalive }}on{{else}}off{{end}}
+    {{- end }}
+    {{- if .Network.KeepaliveIdleTimeoutSet }}
+    net.keepalive_idle_timeout {{ .Network.KeepaliveIdleTimeout }}
+    {{- end }}
+    {{- if .Network.KeepaliveMaxRecycleSet }}
+    net.keepalive_max_recycle {{ .Network.KeepaliveMaxRecycle }}
+    {{- end }}
+    {{- if .Network.SourceAddress }}
+    net.source_address {{ .Network.SourceAddress }}
+    {{- end }}
+    {{- if .Network.MaxWorkerConnections }}
+    net.max_worker_connections {{ .Network.MaxWorkerConnections }}
+    {{- end }}
+    {{- end }}
+`
+
+var fluentbitInputTemplate = `
+{{- define "input" }}
+[INPUT]
+    Name         tail
+    {{- range $key, $value := .Values }}
+    {{- if $value }}
+    {{ $key }}  {{$value}}
+    {{- end }}
+    {{- end }}
+    {{- range $id, $v := .ParserN }}
+    {{- if $v }}
+    Parse_{{ $id}} {{$v}}
+    {{- end }}
+    {{- end }}
+    {{- if .MultilineParser }}
+    multiline.parser {{- range $i, $v := .MultilineParser }}{{ if $i }},{{ end}} {{ $v }}{{ end }}
+    {{- end }}
+{{- end }}
 `
 
 var upstreamConfigTemplate = `
@@ -155,4 +231,13 @@ var upstreamConfigTemplate = `
     Host {{.Host}}
     Port {{.Port}}
 {{- end}}
+`
+
+var criParserConfig = `
+[PARSER]
+    Name cri-log-compatibility
+    Format regex
+    Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 `

@@ -15,8 +15,9 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Azure Storage"
@@ -24,8 +25,8 @@ import (
 type _hugoAzure interface{} //nolint:deadcode,unused
 
 // +docName:"Azure Storage output plugin for Fluentd"
-//Azure Storage output plugin buffers logs in local file and upload them to Azure Storage periodically.
-//More info at https://github.com/microsoft/fluent-plugin-azure-storage-append-blob
+// Azure Storage output plugin buffers logs in local file and upload them to Azure Storage periodically.
+// More info at https://github.com/microsoft/fluent-plugin-azure-storage-append-blob
 type _docAzure interface{} //nolint:deadcode,unused
 
 // +name:"Azure Storage"
@@ -40,6 +41,10 @@ type _metaAzure interface{} //nolint:deadcode,unused
 type AzureStorage struct {
 	// Path prefix of the files on Azure
 	Path string `json:"path,omitempty"`
+	// Available in Logging operator version 4.5 and later.
+	// Azure Cloud to use, for example, AzurePublicCloud, AzureChinaCloud, AzureGermanCloud, AzureUSGovernmentCloud, AZURESTACKCLOUD (in uppercase).
+	// This field is supported only if the fluentd plugin honors it, for example, https://github.com/elsesiy/fluent-plugin-azure-storage-append-blob-lts
+	AzureCloud string `json:"azure_cloud,omitempty"`
 	// Your azure storage account
 	// +docLink:"Secret,../secret/"
 	AzureStorageAccount *secret.Secret `json:"azure_storage_account"`
@@ -61,6 +66,10 @@ type AzureStorage struct {
 	Format string `json:"format,omitempty" plugin:"default:json"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 func (a *AzureStorage) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

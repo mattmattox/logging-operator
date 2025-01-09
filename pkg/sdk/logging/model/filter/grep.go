@@ -15,8 +15,8 @@
 package filter
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Grep"
@@ -48,8 +48,8 @@ type GrepConfig struct {
 }
 
 // +kubebuilder:object:generate=true
-// +docName:"[Regexp Directive](https://docs.fluentd.org/filter/grep#less-than-regexp-greater-than-directive) {#Regexp-Directive}"
-// Specify filtering rule. This directive contains two parameters.
+// +docName:"Regexp Directive"
+// Specify filtering rule (as described in the [Fluentd documentation](https://docs.fluentd.org/filter/grep#less-than-regexp-greater-than-directive)). This directive contains two parameters.
 type RegexpSection struct {
 	// Specify field name in the record to parse.
 	Key string `json:"key"`
@@ -57,39 +57,44 @@ type RegexpSection struct {
 	Pattern string `json:"pattern"`
 }
 
-// #### Example `Regexp` filter configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - grep:
-//        regexp:
-//        - key: first
-//          pattern: /^5\d\d$/
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
-// ```
 //
-// #### Fluentd Config Result
-// ```yaml
-//  <filter **>
-//    @type grep
-//    @id demo-flow_1_grep
-//    <regexp>
-//      key first
-//      pattern /^5\d\d$/
-//    </regexp>
-//  </filter>
-// ```
+/*
+## Example `Regexp` filter configurations
+
+{{< highlight yaml >}}
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: demo-flow
+spec:
+  filters:
+    - grep:
+        regexp:
+        - key: first
+          pattern: /^5\d\d$/
+  selectors: {}
+  localOutputRefs:
+    - demo-output
+{{</ highlight >}}
+
+Fluentd config result:
+
+{{< highlight xml >}}
+  <filter **>
+    @type grep
+    @id demo-flow_1_grep
+    <regexp>
+      key first
+      pattern /^5\d\d$/
+    </regexp>
+  </filter>
+{{</ highlight >}}
+*/
 type _expRegexp interface{} //nolint:deadcode,unused
 
 // +kubebuilder:object:generate=true
-// +docName:"[Exclude Directive](https://docs.fluentd.org/filter/grep#less-than-exclude-greater-than-directive) {#Exclude-Directive}"
-// Specify filtering rule to reject events. This directive contains two parameters.
+// +docName:"Exclude Directive"
+// Specify filtering rule to reject events (as described in the [Fluentd documentation](https://docs.fluentd.org/filter/grep#less-than-exclude-greater-than-directive)). This directive contains two parameters.
 type ExcludeSection struct {
 	// Specify field name in the record to parse.
 	Key string `json:"key"`
@@ -97,39 +102,44 @@ type ExcludeSection struct {
 	Pattern string `json:"pattern"`
 }
 
-// #### Example `Exclude` filter configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - grep:
-//        exclude:
-//        - key: first
-//          pattern: /^5\d\d$/
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
-// ```
 //
-// #### Fluentd Config Result
-// ```yaml
-//  <filter **>
-//    @type grep
-//    @id demo-flow_0_grep
-//    <exclude>
-//      key first
-//      pattern /^5\d\d$/
-//    </exclude>
-//  </filter>
-// ```
+/*
+## Example `Exclude` filter configurations
+
+{{< highlight yaml >}}
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: demo-flow
+spec:
+  filters:
+    - grep:
+        exclude:
+        - key: first
+          pattern: /^5\d\d$/
+  selectors: {}
+  localOutputRefs:
+    - demo-output
+{{</ highlight >}}
+
+Fluentd config result:
+
+{{< highlight xml >}}
+  <filter **>
+    @type grep
+    @id demo-flow_0_grep
+    <exclude>
+      key first
+      pattern /^5\d\d$/
+    </exclude>
+  </filter>
+{{</ highlight >}}
+*/
 type _expExclude interface{} //nolint:deadcode,unused
 
 // +kubebuilder:object:generate=true
-// +docName:"[Or Directive](https://docs.fluentd.org/filter/grep#less-than-or-greater-than-directive) {#Or-Directive}"
-// Specify filtering rule. This directive contains either `regexp` or `exclude` directive.
+// +docName:"Or Directive"
+// Specify filtering rule (as described in the [Fluentd documentation](https://docs.fluentd.org/filter/grep#less-than-or-greater-than-directive). This directive contains either `regexp` or `exclude` directive.
 type OrSection struct {
 	// +docLink:"Regexp Directive,#Regexp-Directive"
 	Regexp []RegexpSection `json:"regexp,omitempty"`
@@ -137,45 +147,50 @@ type OrSection struct {
 	Exclude []ExcludeSection `json:"exclude,omitempty"`
 }
 
-// #### Example `Or` filter configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - grep:
-//        or:
-//          - exclude:
-//            - key: first
-//              pattern: /^5\d\d$/
-//            - key: second
-//              pattern: /\.css$/
 //
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
-//```
-//
-// #### Fluentd Config Result
-// ```yaml
-//    <or>
-//      <exclude>
-//        key first
-//        pattern /^5\d\d$/
-//      </exclude>
-//      <exclude>
-//        key second
-//        pattern /\.css$/
-//      </exclude>
-//    </or>
-// ```
+/*
+## Example `Or` filter configurations
+
+{{< highlight yaml >}}
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: demo-flow
+spec:
+  filters:
+    - grep:
+        or:
+          - exclude:
+            - key: first
+              pattern: /^5\d\d$/
+            - key: second
+              pattern: /\.css$/
+
+  selectors: {}
+  localOutputRefs:
+    - demo-output
+{{</ highlight >}}
+
+Fluentd config result:
+
+{{< highlight xml >}}
+<or>
+	<exclude>
+	key first
+	pattern /^5\d\d$/
+	</exclude>
+	<exclude>
+	key second
+	pattern /\.css$/
+	</exclude>
+</or>
+{{</ highlight >}}
+*/
 type _expOR interface{} //nolint:deadcode,unused
 
 // +kubebuilder:object:generate=true
-// +docName:"[And Directive](https://docs.fluentd.org/filter/grep#less-than-and-greater-than-directive) {#And-Directive}"
-// Specify filtering rule. This directive contains either `regexp` or `exclude` directive.
+// +docName:"And Directive"
+// Specify filtering rule (as described in the [Fluentd documentation](https://docs.fluentd.org/filter/grep#less-than-and-greater-than-directive). This directive contains either `regexp` or `exclude` directive.
 type AndSection struct {
 	// +docLink:"Regexp Directive,#Regexp-Directive"
 	Regexp []RegexpSection `json:"regexp,omitempty"`
@@ -183,40 +198,45 @@ type AndSection struct {
 	Exclude []ExcludeSection `json:"exclude,omitempty"`
 }
 
-// #### Example `And` filter configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - grep:
-//        and:
-//          - regexp:
-//            - key: first
-//              pattern: /^5\d\d$/
-//            - key: second
-//              pattern: /\.css$/
 //
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
-//```
-//
-// #### Fluentd Config Result
-// ```yaml
-//    <and>
-//      <regexp>
-//        key first
-//        pattern /^5\d\d$/
-//      </regexp>
-//      <regexp>
-//        key second
-//        pattern /\.css$/
-//      </regexp>
-//    </and>
-// ```
+/*
+## Example `And` filter configurations
+
+{{< highlight yaml >}}
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: demo-flow
+spec:
+  filters:
+    - grep:
+        and:
+          - regexp:
+            - key: first
+              pattern: /^5\d\d$/
+            - key: second
+              pattern: /\.css$/
+
+  selectors: {}
+  localOutputRefs:
+    - demo-output
+{{</ highlight >}}
+
+Fluentd config result:
+
+{{< highlight xml >}}
+	<and>
+	  <regexp>
+	    key first
+	    pattern /^5\d\d$/
+	  </regexp>
+	  <regexp>
+	    key second
+	    pattern /\.css$/
+	  </regexp>
+	</and>
+{{</ highlight >}}
+*/
 type _expAND interface{} //nolint:deadcode,unused
 
 func (r *RegexpSection) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

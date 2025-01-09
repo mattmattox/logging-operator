@@ -17,10 +17,10 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestNewRelic(t *testing.T) {
@@ -34,6 +34,13 @@ license_key:
 		@id test
 		base_uri https://log-api.newrelic.com/log/v1
 		license_key 000000000000000000000000
+		<buffer tag,time>
+			@type file
+			path /buffers/test.*.buffer
+			retry_forever true
+			timekey 10m
+			timekey_wait 1m
+		</buffer>
 	</match>
 `
 	newrelic := &output.NewRelicOutputConfig{}
