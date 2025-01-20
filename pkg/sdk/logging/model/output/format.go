@@ -15,13 +15,31 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Format"
 // +weight:"200"
 type _hugoFormat interface{} //nolint:deadcode,unused
+
+// +docName:"Format output records"
+/*
+Specify how to format output records. For details, see [https://docs.fluentd.org/configuration/format-section](https://docs.fluentd.org/configuration/format-section).
+
+## Example
+
+```yaml
+spec:
+  format:
+    path: /tmp/logs/${tag}/%Y/%m/%d.%H.%M
+    format:
+      type: single_value
+      add_newline: true
+      message_key: msg
+```
+*/
+type _docFormat interface{} //nolint:deadcode,unused
 
 // +name:"Format"
 // +url:"https://docs.fluentd.org/configuration/format-section"

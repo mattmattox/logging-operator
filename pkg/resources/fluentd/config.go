@@ -17,7 +17,7 @@ package fluentd
 var fluentdConfigCheckTemplate = `
 # include other config files
 @include /fluentd/etc/input.conf
-@include /fluentd/etc/generated.conf
+@include /fluentd/app-config/*
 @include /fluentd/etc/devnull.conf
 @include /fluentd/etc/fluentlog.conf
 `
@@ -33,6 +33,11 @@ var fluentdInputTemplate = `
 # Enable RPC endpoint (this allows to trigger config reload without restart)
 <system>
   rpc_endpoint 127.0.0.1:24444
+  {{- if .LogFormat }}  
+  <log>
+    format {{ .LogFormat }}
+  </log>
+  {{- end }}
   log_level {{ .LogLevel }}
   workers {{ .Workers }}
 {{- if .RootDir }}
@@ -53,9 +58,18 @@ var fluentdInputTemplate = `
 {{ if .Monitor.Enabled }}
 <source>
     @type prometheus
+    {{- if .Monitor.EnabledIPv6 }}
+    @id in_prometheus6
+    bind "::"
+    {{- else }}
+    bind "0.0.0.0"
+    {{- end }}
     port {{ .Monitor.Port }}
+    {{- if .Monitor.Path }}
     metrics_path {{ .Monitor.Path }}
+    {{- end }}
 </source>
+
 <source>
     @type prometheus_monitor
 </source>

@@ -16,22 +16,28 @@ package model
 
 import (
 	"context"
+	"os"
 	"sort"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
-func NewLoggingResourceRepository(client client.Reader) *LoggingResourceRepository {
+func NewLoggingResourceRepository(client client.Reader, logger logr.Logger) *LoggingResourceRepository {
 	return &LoggingResourceRepository{
 		Client: client,
+		Logger: logger,
 	}
 }
 
 type LoggingResourceRepository struct {
 	Client client.Reader
+	Logger logr.Logger
 }
 
 func (r LoggingResourceRepository) LoggingResourcesFor(ctx context.Context, logging v1beta1.Logging) (res LoggingResources, errs error) {
@@ -39,37 +45,107 @@ func (r LoggingResourceRepository) LoggingResourcesFor(ctx context.Context, logg
 
 	var err error
 
-	res.ClusterFlows, err = r.ClusterFlowsFor(ctx, logging)
+	allLoggings := &v1beta1.LoggingList{}
+	if err := r.Client.List(ctx, allLoggings); err != nil {
+		errs = errors.Append(errs, err)
+	}
+	res.AllLoggings = allLoggings.Items
+
+	res.Fluentd.ClusterFlows, err = r.ClusterFlowsFor(ctx, logging)
 	errs = errors.Append(errs, err)
 
-	res.ClusterOutputs, err = r.ClusterOutputsFor(ctx, logging)
+	res.Fluentd.ClusterOutputs, err = r.ClusterOutputsFor(ctx, logging)
 	errs = errors.Append(errs, err)
 
-	watchNamespaces := logging.Spec.WatchNamespaces
-	if len(watchNamespaces) == 0 {
-		var nsList corev1.NamespaceList
-		if err := r.Client.List(ctx, &nsList); err != nil {
-			errs = errors.Append(errs, errors.WrapIf(err, "listing namespaces"))
-			return
+	res.Fluentd.Configuration, res.Fluentd.ExcessFluentds, err = r.FluentdConfigFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.SyslogNG.Configuration, res.SyslogNG.ExcessSyslogNGs, err = r.SyslogNGConfigFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.SyslogNG.ClusterFlows, err = r.SyslogNGClusterFlowsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.SyslogNG.ClusterOutputs, err = r.SyslogNGClusterOutputsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.NodeAgents, err = r.NodeAgentsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.Fluentbits, err = r.FluentbitsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.LoggingRoutes, err = r.LoggingRoutesFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.WatchNamespaces, err = UniqueWatchNamespaces(ctx, r.Client, &logging)
+	if err != nil {
+		errs = errors.Append(errs, err)
+		return
+	}
+
+	for _, ns := range res.WatchNamespaces {
+		{
+			flows, err := r.FlowsInNamespaceFor(ctx, ns, logging)
+			res.Fluentd.Flows = append(res.Fluentd.Flows, flows...)
+			errs = errors.Append(errs, err)
 		}
 
+		{
+			outputs, err := r.OutputsInNamespaceFor(ctx, ns, logging)
+			res.Fluentd.Outputs = append(res.Fluentd.Outputs, outputs...)
+			errs = errors.Append(errs, err)
+		}
+
+		{
+			flows, err := r.SyslogNGFlowsInNamespaceFor(ctx, ns, logging)
+			res.SyslogNG.Flows = append(res.SyslogNG.Flows, flows...)
+			errs = errors.Append(errs, err)
+		}
+
+		{
+			outputs, err := r.SyslogNGOutputsInNamespaceFor(ctx, ns, logging)
+			res.SyslogNG.Outputs = append(res.SyslogNG.Outputs, outputs...)
+			errs = errors.Append(errs, err)
+		}
+	}
+
+	return
+}
+
+func UniqueWatchNamespaces(ctx context.Context, reader client.Reader, logging *v1beta1.Logging) ([]string, error) {
+	watchNamespaces := logging.Spec.WatchNamespaces
+	nsLabelSelector := logging.Spec.WatchNamespaceSelector
+	if len(watchNamespaces) == 0 || nsLabelSelector != nil {
+		var nsList corev1.NamespaceList
+		var nsListOptions = &client.ListOptions{}
+		if nsLabelSelector != nil {
+			selector, err := metav1.LabelSelectorAsSelector(nsLabelSelector)
+			if err != nil {
+				return nil, errors.WrapIf(err, "error in watchNamespaceSelector")
+			}
+			nsListOptions = &client.ListOptions{
+				LabelSelector: selector,
+			}
+		}
+		if err := reader.List(ctx, &nsList, nsListOptions); err != nil {
+			return nil, errors.WrapIf(err, "listing namespaces for watchNamespaceSelector")
+		}
 		for _, i := range nsList.Items {
 			watchNamespaces = append(watchNamespaces, i.Name)
 		}
 	}
+	uniqueWatchNamespaces := []string{}
+	var previousNamespace string
 	sort.Strings(watchNamespaces)
 
-	for _, ns := range watchNamespaces {
-		flows, err := r.FlowsInNamespaceFor(ctx, ns, logging)
-		res.Flows = append(res.Flows, flows...)
-		errs = errors.Append(errs, err)
-
-		outputs, err := r.OutputsInNamespaceFor(ctx, ns, logging)
-		res.Outputs = append(res.Outputs, outputs...)
-		errs = errors.Append(errs, err)
+	for _, n := range watchNamespaces {
+		if n != previousNamespace {
+			uniqueWatchNamespaces = append(uniqueWatchNamespaces, n)
+		}
+		previousNamespace = n
 	}
-
-	return
+	return uniqueWatchNamespaces, nil
 }
 
 func (r LoggingResourceRepository) ClusterFlowsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.ClusterFlow, error) {
@@ -78,16 +154,17 @@ func (r LoggingResourceRepository) ClusterFlowsFor(ctx context.Context, logging 
 		return nil, err
 	}
 
-	sort.Slice(list.Items, func(i, j int) bool {
-		return lessByNamespacedName(&list.Items[i], &list.Items[j])
-	})
-
 	var res []v1beta1.ClusterFlow
 	for _, i := range list.Items {
 		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
 			res = append(res, i)
 		}
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+
 	return res, nil
 }
 
@@ -97,16 +174,17 @@ func (r LoggingResourceRepository) ClusterOutputsFor(ctx context.Context, loggin
 		return nil, err
 	}
 
-	sort.Slice(list.Items, func(i, j int) bool {
-		return lessByNamespacedName(&list.Items[i], &list.Items[j])
-	})
-
 	var res []v1beta1.ClusterOutput
 	for _, i := range list.Items {
 		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
 			res = append(res, i)
 		}
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+
 	return res, nil
 }
 
@@ -116,16 +194,17 @@ func (r LoggingResourceRepository) FlowsInNamespaceFor(ctx context.Context, name
 		return nil, err
 	}
 
-	sort.Slice(list.Items, func(i, j int) bool {
-		return lessByNamespacedName(&list.Items[i], &list.Items[j])
-	})
-
 	var res []v1beta1.Flow
 	for _, i := range list.Items {
 		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
 			res = append(res, i)
 		}
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+
 	return res, nil
 }
 
@@ -135,16 +214,232 @@ func (r LoggingResourceRepository) OutputsInNamespaceFor(ctx context.Context, na
 		return nil, err
 	}
 
-	sort.Slice(list.Items, func(i, j int) bool {
-		return lessByNamespacedName(&list.Items[i], &list.Items[j])
-	})
-
 	var res []v1beta1.Output
 	for _, i := range list.Items {
 		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
 			res = append(res, i)
 		}
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGClusterFlowsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.SyslogNGClusterFlow, error) {
+	var list v1beta1.SyslogNGClusterFlowList
+	if err := r.Client.List(ctx, &list, clusterResourceListOpts(logging)...); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.SyslogNGClusterFlow
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGClusterOutputsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.SyslogNGClusterOutput, error) {
+	var list v1beta1.SyslogNGClusterOutputList
+	if err := r.Client.List(ctx, &list, clusterResourceListOpts(logging)...); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.SyslogNGClusterOutput
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGFlowsInNamespaceFor(ctx context.Context, namespace string, logging v1beta1.Logging) ([]v1beta1.SyslogNGFlow, error) {
+	var list v1beta1.SyslogNGFlowList
+	if err := r.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.SyslogNGFlow
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGOutputsInNamespaceFor(ctx context.Context, namespace string, logging v1beta1.Logging) ([]v1beta1.SyslogNGOutput, error) {
+	var list v1beta1.SyslogNGOutputList
+	if err := r.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.SyslogNGOutput
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) NodeAgentsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.NodeAgent, error) {
+	// Deprecated: Node agents are deprecated and no longer maintained actively
+	if os.Getenv("ENABLE_NODEAGENT_CRD") == "" {
+		return nil, nil
+	}
+
+	var list v1beta1.NodeAgentList
+	if err := r.Client.List(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.NodeAgent
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+
+func (r LoggingResourceRepository) FluentbitsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.FluentbitAgent, error) {
+	var list v1beta1.FluentbitAgentList
+	if err := r.Client.List(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.FluentbitAgent
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
+	return res, nil
+}
+func (r LoggingResourceRepository) handleMultipleDetachedFluentdObjects(list []v1beta1.FluentdConfig, logging v1beta1.Logging) []v1beta1.FluentdConfig {
+
+	r.Logger.Info("multiple detached Fluentd CRDs found")
+
+	var excessFluentds []v1beta1.FluentdConfig
+	for _, i := range list {
+		if len(logging.Status.FluentdConfigName) != 0 {
+			if i.Name != logging.Status.FluentdConfigName {
+				excessFluentds = append(excessFluentds, i)
+			}
+		} else {
+			// No association, mark everything as excess
+			excessFluentds = append(excessFluentds, i)
+		}
+	}
+
+	return excessFluentds
+}
+
+func (r LoggingResourceRepository) FluentdConfigFor(ctx context.Context, logging v1beta1.Logging) (*v1beta1.FluentdConfig, []v1beta1.FluentdConfig, error) {
+	var list v1beta1.FluentdConfigList
+	if err := r.Client.List(ctx, &list, client.InNamespace(logging.Spec.ControlNamespace)); err != nil {
+		return nil, []v1beta1.FluentdConfig{}, err
+	}
+
+	var res []v1beta1.FluentdConfig
+	res = append(res, list.Items...)
+
+	switch len(res) {
+	case 0:
+		return nil, []v1beta1.FluentdConfig{}, nil
+	case 1:
+		// Implicitly associate fluentd configuration object with logging
+		detachedFluentd := res[0]
+		err := detachedFluentd.Spec.SetDefaults()
+		return &detachedFluentd, []v1beta1.FluentdConfig{}, err
+	default:
+		excessFluentds := r.handleMultipleDetachedFluentdObjects(res, logging)
+		return nil, excessFluentds, nil
+	}
+}
+func (r LoggingResourceRepository) handleMultipleDetachedSyslogNGObjects(list []v1beta1.SyslogNGConfig, logging v1beta1.Logging) []v1beta1.SyslogNGConfig {
+
+	r.Logger.Info("multiple detached SyslogNG CRDs found")
+
+	var excessSyslogNGs []v1beta1.SyslogNGConfig
+	for _, i := range list {
+		if len(logging.Status.SyslogNGConfigName) != 0 {
+			if i.Name != logging.Status.SyslogNGConfigName {
+				excessSyslogNGs = append(excessSyslogNGs, i)
+			}
+		} else {
+			// No association, mark everything as excess
+			excessSyslogNGs = append(excessSyslogNGs, i)
+		}
+	}
+	return excessSyslogNGs
+}
+
+func (r LoggingResourceRepository) SyslogNGConfigFor(ctx context.Context, logging v1beta1.Logging) (*v1beta1.SyslogNGConfig, []v1beta1.SyslogNGConfig, error) {
+	var list v1beta1.SyslogNGConfigList
+	if err := r.Client.List(ctx, &list, client.InNamespace(logging.Spec.ControlNamespace)); err != nil {
+		return nil, []v1beta1.SyslogNGConfig{}, err
+	}
+
+	var res []v1beta1.SyslogNGConfig
+	res = append(res, list.Items...)
+
+	switch len(res) {
+	case 0:
+		return nil, []v1beta1.SyslogNGConfig{}, nil
+
+	case 1:
+		// Implicitly associate syslogng configuration object with logging
+		detachedSyslogNG := res[0]
+		detachedSyslogNG.Spec.SetDefaults()
+		r.Logger.Info("found detached syslog-ng aggregator", "name=", detachedSyslogNG.Name)
+
+		return &detachedSyslogNG, []v1beta1.SyslogNGConfig{}, nil
+	default:
+		excessSyslogNGs := r.handleMultipleDetachedSyslogNGObjects(res, logging)
+		return nil, excessSyslogNGs, nil
+	}
+}
+
+func (r LoggingResourceRepository) LoggingRoutesFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.LoggingRoute, error) {
+	var list v1beta1.LoggingRouteList
+	if err := r.Client.List(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	var res []v1beta1.LoggingRoute
+	for _, i := range list.Items {
+		if i.Spec.Source == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return lessByNamespacedName(&res[i], &res[j])
+	})
 	return res, nil
 }
 

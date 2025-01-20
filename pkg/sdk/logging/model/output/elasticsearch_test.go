@@ -17,10 +17,10 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestElasticSearch(t *testing.T) {
@@ -34,11 +34,13 @@ buffer:
   timekey: 1m
   timekey_wait: 30s
   timekey_use_utc: true
+compression_level: default_compression
 `)
 	expected := `
   <match **>
 	@type elasticsearch
 	@id test
+	compression_level default_compression
 	exception_backup true
 	fail_on_detecting_es_version_retry_exceed true
 	fail_on_putting_template_retry_exceed true
@@ -52,7 +54,6 @@ buffer:
 	verify_es_version_at_startup true
     <buffer tag,time>
       @type file
-	  chunk_limit_size 8MB
       path /buffers/test.*.buffer
       retry_forever true
       timekey 1m
@@ -100,7 +101,6 @@ buffer:
     verify_es_version_at_startup true
     <buffer tag,time>
       @type file
-      chunk_limit_size 8MB
       path /buffers/test.*.buffer
       retry_forever true
       timekey 1m

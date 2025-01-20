@@ -15,7 +15,7 @@
 package v1alpha1
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,7 +39,6 @@ type OutputSpec struct {
 	OpenSearchOutput             *output.OpenSearchOutput             `json:"opensearch,omitempty"`
 	LogZOutput                   *output.LogZOutput                   `json:"logz,omitempty"`
 	LokiOutput                   *output.LokiOutput                   `json:"loki,omitempty"`
-	SumologicOutput              *output.SumologicOutput              `json:"sumologic,omitempty"`
 	DatadogOutput                *output.DatadogOutput                `json:"datadog,omitempty"`
 	ForwardOutput                *output.ForwardOutput                `json:"forward,omitempty"`
 	FileOutput                   *output.FileOutputConfig             `json:"file,omitempty"`
@@ -54,8 +53,9 @@ type OutputSpec struct {
 	AwsElasticsearchOutputConfig *output.AwsElasticsearchOutputConfig `json:"awsElasticsearch,omitempty"`
 	RedisOutputConfig            *output.RedisOutputConfig            `json:"redis,omitempty"`
 	SyslogOutputConfig           *output.SyslogOutputConfig           `json:"syslog,omitempty"`
-	GELFOutputConfig             *output.GELFOutputConfig             `json:"gelf,omitempty"`
+	GelfOutputConfig             *output.GelfOutputConfig             `json:"gelf,omitempty"`
 	SQSOutputConfig              *output.SQSOutputConfig              `json:"sqs,omitempty"`
+	RelabelOutputConfig          *output.RelabelOutputConfig          `json:"relabel,omitempty"`
 }
 
 // OutputStatus defines the observed state of Output

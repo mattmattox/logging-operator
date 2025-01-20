@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ package output_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
-	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
-func TestGELFOutputConfig(t *testing.T) {
+func TestGelfOutputConfig(t *testing.T) {
 	CONFIG := []byte(`
 host: gelf-host
 port: 12201
@@ -34,9 +34,16 @@ port: 12201
     @id test
     host gelf-host
     port 12201
+    <buffer tag,time>
+      @type file
+      path /buffers/test.*.buffer
+      retry_forever true
+      timekey 10m
+      timekey_wait 1m
+    </buffer>
   </match>
 `
-	s := &output.GELFOutputConfig{}
+	s := &output.GelfOutputConfig{}
 	require.NoError(t, yaml.Unmarshal(CONFIG, s))
 	test := render.NewOutputPluginTest(t, s)
 	test.DiffResult(expected)

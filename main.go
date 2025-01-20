@@ -21,18 +21,13 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"os/signal"
+	"runtime/coverage"
 	"strings"
+	"syscall"
+	"time"
 
 	"emperror.dev/errors"
-	extensionsControllers "github.com/banzaicloud/logging-operator/controllers/extensions"
-	loggingControllers "github.com/banzaicloud/logging-operator/controllers/logging"
-	"github.com/banzaicloud/logging-operator/pkg/k8sutil"
-	extensionsv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/api/v1alpha1"
-	config "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/extensionsconfig"
-	loggingv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1alpha1"
-	loggingv1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/logging-operator/pkg/webhook/podhandler"
 	prometheusOperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/cast"
 	appsv1 "k8s.io/api/apps/v1"
@@ -47,8 +42,21 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	extensionsControllers "github.com/kube-logging/logging-operator/controllers/extensions"
+	loggingControllers "github.com/kube-logging/logging-operator/controllers/logging"
+	extensionsv1alpha1 "github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/v1alpha1"
+	config "github.com/kube-logging/logging-operator/pkg/sdk/extensions/extensionsconfig"
+	loggingv1alpha1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1alpha1"
+	loggingv1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
+	"github.com/kube-logging/logging-operator/pkg/webhook/podhandler"
+	telemetryv1alpha1 "github.com/kube-logging/telemetry-controller/api/telemetry/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -65,6 +73,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 	_ = prometheusOperator.AddToScheme(scheme)
 	_ = apiextensions.AddToScheme(scheme)
+	_ = telemetryv1alpha1.AddToScheme(scheme)
 }
 
 func main() {
@@ -75,7 +84,10 @@ func main() {
 	var enableprofile bool
 	var namespace string
 	var loggingRef string
+	var finalizerCleanup bool
+	var enableTelemetryControllerRoute bool
 	var klogLevel int
+	var syncPeriod string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -86,6 +98,9 @@ func main() {
 	flag.BoolVar(&enableprofile, "pprof", false, "Enable pprof")
 	flag.StringVar(&namespace, "watch-namespace", "", "Namespace to filter the list of watched objects")
 	flag.StringVar(&loggingRef, "watch-logging-name", "", "Logging resource name to optionally filter the list of watched objects based on which logging they belong to by checking the app.kubernetes.io/managed-by label")
+	flag.BoolVar(&finalizerCleanup, "finalizer-cleanup", false, "Remove finalizers from Logging resources during operator shutdown, useful for Helm uninstallation")
+	flag.BoolVar(&enableTelemetryControllerRoute, "enable-telemetry-controller-route", false, "Enable the Telemetry Controller route for Logging resources")
+	flag.StringVar(&syncPeriod, "sync-period", "", "SyncPeriod determines the minimum frequency at which watched resources are reconciled. Defaults to 10 hours. Parsed using time.ParseDuration.")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -119,18 +134,36 @@ func main() {
 	klog.SetLogger(zapLogger)
 
 	mgrOptions := ctrl.Options{
-		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "logging-operator." + loggingv1beta1.GroupVersion.Group,
-		MapperProvider:     k8sutil.NewCached,
-		Port:               9443,
+		Scheme:           scheme,
+		Metrics:          metricsserver.Options{BindAddress: metricsAddr},
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "logging-operator." + loggingv1beta1.GroupVersion.Group,
 	}
 
-	customMgrOptions, err := setupCustomCache(&mgrOptions, namespace, loggingRef)
+	if os.Getenv("ENABLE_WEBHOOKS") == "true" {
+		webhookServerOptions := webhook.Options{
+			Port:    config.TailerWebhook.ServerPort,
+			CertDir: config.TailerWebhook.CertDir,
+		}
+		if port, ok := os.LookupEnv("WEBHOOK_PORT"); ok {
+			webhookServerOptions.Port = cast.ToInt(port)
+		}
+		webhookServer := webhook.NewServer(webhookServerOptions)
+		mgrOptions.WebhookServer = webhookServer
+	}
+
+	customMgrOptions, err := setupCustomCache(&mgrOptions, syncPeriod, namespace, loggingRef)
 	if err != nil {
 		setupLog.Error(err, "unable to set up custom cache settings")
 		os.Exit(1)
+	}
+
+	if enableprofile {
+		setupLog.Info("enabling pprof")
+		pprofxIndexPath := "/debug/pprof"
+		customMgrOptions.Metrics.ExtraHandlers = map[string]http.Handler{
+			pprofxIndexPath: http.HandlerFunc(pprof.Index),
+		}
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), *customMgrOptions)
@@ -140,25 +173,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	if enableprofile {
-		setupLog.Info("enabling pprof")
-		err = mgr.AddMetricsExtraHandler("/debug/pprof/", http.HandlerFunc(pprof.Index))
-		if err != nil {
-			setupLog.Error(err, "unable to attach pprof to webserver")
-			os.Exit(1)
-		}
-	}
-
 	if err := detectContainerRuntime(ctx, mgr.GetAPIReader()); err != nil {
 		setupLog.Error(err, "failed to detect container runtime")
 		os.Exit(1)
 	}
 
-	loggingReconciler := loggingControllers.NewLoggingReconciler(mgr.GetClient(), ctrl.Log.WithName("controllers").WithName("Logging"))
+	loggingReconciler := loggingControllers.NewLoggingReconciler(mgr.GetClient(), mgr.GetEventRecorderFor("logging-operator"), ctrl.Log.WithName("logging"))
 
 	if err := (&extensionsControllers.EventTailerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("EventTailer"),
+		Log:    ctrl.Log.WithName("event-tailer"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "EventTailer")
@@ -166,7 +190,7 @@ func main() {
 	}
 	if err := (&extensionsControllers.HostTailerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("HostTailer"),
+		Log:    ctrl.Log.WithName("host-tailer"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HostTailer")
@@ -176,6 +200,18 @@ func main() {
 	if err := loggingControllers.SetupLoggingWithManager(mgr, ctrl.Log.WithName("manager")).Complete(loggingReconciler); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Logging")
 		os.Exit(1)
+	}
+
+	if err := loggingControllers.SetupLoggingRouteWithManager(mgr, ctrl.Log.WithName("logging-route")); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "LoggingRoute")
+		os.Exit(1)
+	}
+
+	if enableTelemetryControllerRoute {
+		if err := loggingControllers.SetupTelemetryControllerWithManager(mgr, ctrl.Log.WithName("telemetry-controller")); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "TelemetryController")
+			os.Exit(1)
+		}
 	}
 
 	if os.Getenv("ENABLE_WEBHOOKS") == "true" {
@@ -191,24 +227,71 @@ func main() {
 		// Webhook server registration
 		setupLog.Info("Setting up webhook server...")
 		webhookServer := mgr.GetWebhookServer()
-		if config.TailerWebhook.ServerPort != 0 {
-			webhookServer.Port = config.TailerWebhook.ServerPort
-		}
-		if config.TailerWebhook.CertDir != "" {
-			webhookServer.CertDir = config.TailerWebhook.CertDir
-		}
 
 		setupLog.Info("Registering webhooks...")
-		webhookServer.Register(config.TailerWebhook.ServerPath, &webhook.Admission{Handler: podhandler.NewPodHandler(mgr.GetClient())})
-
+		webhookHandler := podhandler.NewPodHandler(ctrl.Log.WithName("webhook-tailer"))
+		webhookHandler.Decoder = admission.NewDecoder(mgr.GetScheme())
+		webhookServer.Register(config.TailerWebhook.ServerPath, &webhook.Admission{Handler: webhookHandler})
 	}
 
 	// +kubebuilder:scaffold:builder
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+
+	if err := mgr.Start(setupSignalHandler(mgr, finalizerCleanup)); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+}
+
+// Extends sigs.k8s.io/controller-runtime@v0.17.2/pkg/manager/signals/signal.go with
+// SIGUSR1 handler for saving test coverage files
+var onlyOneSignalHandler = make(chan struct{})
+
+func setupSignalHandler(mgr ctrl.Manager, finalizerCleanup bool) context.Context {
+	close(onlyOneSignalHandler) // panics when called twice
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-c
+		cancel()
+
+		// Due to the way Helm handles uninstallation,
+		// the operator might be terminated before the finalizers are removed.
+		if finalizerCleanup {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cleanupCancel()
+
+			cleanupFinalizers(cleanupCtx, mgr.GetClient())
+		}
+
+		os.Exit(1) // second signal. Exit directly.
+	}()
+
+	coverDir, exists := os.LookupEnv("GOCOVERDIR")
+	if !exists {
+		return ctx
+	}
+	coverChan := make(chan os.Signal, 1)
+	signal.Notify(coverChan, syscall.SIGUSR1)
+	go func() {
+		for {
+			<-coverChan
+			if err := coverage.WriteCountersDir(coverDir); err != nil {
+				setupLog.Error(err, "Could not write coverage profile data files to the directory")
+				os.Exit(1)
+			}
+			if err := coverage.ClearCounters(); err != nil {
+				setupLog.Error(err, "Could not reset coverage counter variables")
+				os.Exit(1)
+			}
+		}
+	}()
+
+	return ctx
 }
 
 func detectContainerRuntime(ctx context.Context, c client.Reader) error {
@@ -221,15 +304,23 @@ func detectContainerRuntime(ctx context.Context, c client.Reader) error {
 		runtimeWithVersion := nodeList.Items[0].Status.NodeInfo.ContainerRuntimeVersion
 		runtime := strings.Split(runtimeWithVersion, "://")[0]
 		setupLog.Info("Detected container runtime", "runtime", runtime)
-
 		types.ContainerRuntime = runtime
+	} else {
+		setupLog.Info("Unable to detect container runtime, keeping default value", "runtime", types.ContainerRuntime)
 	}
 
-	setupLog.Info("Unable to detect container runtime, keeping default value", "runtime", types.ContainerRuntime)
 	return nil
 }
 
-func setupCustomCache(mgrOptions *ctrl.Options, namespace string, loggingRef string) (*ctrl.Options, error) {
+func setupCustomCache(mgrOptions *ctrl.Options, syncPeriod string, namespace string, loggingRef string) (*ctrl.Options, error) {
+	if syncPeriod != "" {
+		duration, err := time.ParseDuration(syncPeriod)
+		if err != nil {
+			return mgrOptions, err
+		}
+		mgrOptions.Cache.SyncPeriod = &duration
+	}
+
 	if namespace == "" && loggingRef == "" {
 		return mgrOptions, nil
 	}
@@ -243,30 +334,66 @@ func setupCustomCache(mgrOptions *ctrl.Options, namespace string, loggingRef str
 		labelSelector = labels.Set{"app.kubernetes.io/managed-by": loggingRef}.AsSelector()
 	}
 
-	selectorsByObject := cache.SelectorsByObject{
-		&corev1.Pod{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.DaemonSet{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.StatefulSet{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.Deployment{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&corev1.PersistentVolumeClaim{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
+	mgrOptions.Cache = cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Pod{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.DaemonSet{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.StatefulSet{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.Deployment{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&corev1.PersistentVolumeClaim{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
 		},
 	}
 
-	mgrOptions.NewCache = cache.BuilderWithOptions(cache.Options{SelectorsByObject: selectorsByObject})
-
 	return mgrOptions, nil
+}
+
+func cleanupFinalizers(ctx context.Context, client client.Client) {
+	log := ctrl.Log.WithName("finalizer-cleanup")
+	log.Info("Removing finalizers during operator shutdown")
+
+	// List all Logging resources
+	loggingList := &loggingv1beta1.LoggingList{}
+	if err := client.List(ctx, loggingList); err != nil {
+		log.Error(err, "Failed to list Logging resources")
+		return
+	}
+
+	finalizers := []string{
+		loggingControllers.FluentdConfigFinalizer,
+		loggingControllers.SyslogNGConfigFinalizer,
+		loggingControllers.TelemetryControllerFinalizer,
+	}
+	for _, logging := range loggingList.Items {
+		for _, finalizer := range finalizers {
+			if controllerutil.ContainsFinalizer(&logging, finalizer) {
+				log.Info(fmt.Sprintf("Removing finalizer: %s from: %s during operator shutdown",
+					finalizer,
+					logging.Name))
+
+				controllerutil.RemoveFinalizer(&logging, finalizer)
+				if err := client.Update(ctx, &logging); err != nil {
+					log.Error(err, fmt.Sprintf("Failed to remove finalizer: %s from: %s during operator shutdown",
+						finalizer,
+						logging.Name))
+					// continue trying to remove finalizers for other resources
+					continue
+				}
+			}
+		}
+	}
 }

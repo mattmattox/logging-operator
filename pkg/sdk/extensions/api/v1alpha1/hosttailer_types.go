@@ -15,7 +15,8 @@
 package v1alpha1
 
 import (
-	"github.com/banzaicloud/operator-tools/pkg/types"
+	"github.com/cisco-open/operator-tools/pkg/types"
+	"github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/tailer"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -33,22 +34,22 @@ type _metaHostTailer = interface{} //nolint:deadcode,unused
 
 // HostTailerSpec defines the desired state of HostTailer
 type HostTailerSpec struct {
-	// List of file tailers
+	// List of [file tailers](#filetailer).
 	FileTailers []FileTailer `json:"fileTailers,omitempty"`
-	// List of systemd tailers
+	// List of [systemd tailers](#systemdtailer).
 	SystemdTailers []SystemdTailer `json:"systemdTailers,omitempty"`
 	// EnableRecreateWorkloadOnImmutableFieldChange enables the operator to recreate the
 	// daemonset (and possibly other resource in the future) in case there is a change in an immutable field
 	// that otherwise couldn't be managed with a simple update.
 	EnableRecreateWorkloadOnImmutableFieldChange bool `json:"enableRecreateWorkloadOnImmutableFieldChange,omitempty"`
-	//+kubebuilder:validation:Required
 	// Override metadata of the created resources
 	WorkloadMetaBase *types.MetaBase `json:"workloadMetaOverrides,omitempty"`
 	// Override podSpec fields for the given daemonset
 	WorkloadBase *types.PodSpecBase `json:"workloadOverrides,omitempty"`
+	Image        tailer.ImageSpec   `json:"image,omitempty"`
 }
 
-// HostTailerStatus defines the observed state of HostTailer
+// HostTailerStatus defines the observed state of [HostTailer](#hosttailer).
 type HostTailerStatus struct {
 }
 
@@ -65,7 +66,7 @@ type HostTailer struct {
 
 // +kubebuilder:object:root=true
 
-// HostTailerList contains a list of HostTailer
+// HostTailerList contains a list of [HostTailers](#hosttailer).
 type HostTailerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -90,6 +91,8 @@ type FileTailer struct {
 	ReadFromHead bool `json:"read_from_head,omitempty"`
 	// Override container fields for the given tailer
 	ContainerBase *types.ContainerBase `json:"containerOverrides,omitempty"`
+	// Override image field for the given trailer
+	Image *tailer.ImageSpec `json:"image,omitempty"`
 }
 
 // SystemdTailer configuration options
@@ -106,6 +109,8 @@ type SystemdTailer struct {
 	MaxEntries int `json:"maxEntries,omitempty"`
 	// Override container fields for the given tailer
 	ContainerBase *types.ContainerBase `json:"containerOverrides,omitempty"`
+	// Override image field for the given trailer
+	Image *tailer.ImageSpec `json:"image,omitempty"`
 }
 
 func init() {

@@ -15,13 +15,28 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Null"
 // +weight:"200"
 type _hugoNull interface{} //nolint:deadcode,unused
+
+// +docName:"Null output plugin for Fluentd"
+//
+/*
+For details, see [https://docs.fluentd.org/output/null](https://docs.fluentd.org/output/null).
+
+## Example output configurations
+
+```yaml
+spec:
+  nullout:
+    never_flush: false
+```
+*/
+type _docNull interface{} //nolint:deadcode,unused
 
 // +name:"Null"
 // +url:"https://docs.fluentd.org/output/null"
@@ -33,6 +48,8 @@ type _metaNull interface{} //nolint:deadcode,unused
 // +kubebuilder:object:generate=true
 
 type NullOutputConfig struct {
+	// The parameter for testing to simulate the output plugin that never succeeds to flush.
+	NeverFlush *bool `json:"never_flush,omitempty"`
 }
 
 func NewNullOutputConfig() *NullOutputConfig {
@@ -41,10 +58,19 @@ func NewNullOutputConfig() *NullOutputConfig {
 
 func (c *NullOutputConfig) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {
 	const pluginType = "null"
-	return types.NewFlatDirective(types.PluginMeta{
-		Type:      pluginType,
-		Directive: "match",
-		Tag:       "**",
-		Id:        id,
-	}, c, secretLoader)
+	null := &types.OutputPlugin{
+		PluginMeta: types.PluginMeta{
+			Type:      pluginType,
+			Directive: "match",
+			Tag:       "**",
+			Id:        id,
+		},
+	}
+	if params, err := types.NewStructToStringMapper(secretLoader).StringsMap(c); err != nil {
+		return nil, err
+	} else {
+		null.Params = params
+	}
+
+	return null, nil
 }

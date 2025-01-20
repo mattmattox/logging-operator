@@ -19,8 +19,8 @@ import (
 	"fmt"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/secret"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,6 +28,10 @@ import (
 )
 
 func (r *Reconciler) markSecrets(secrets *secret.MountSecrets) ([]runtime.Object, reconciler.DesiredState, error) {
+	if secrets == nil {
+		return nil, reconciler.StateAbsent, nil
+	}
+
 	var loggingRef string
 	if r.Logging.Spec.LoggingRef != "" {
 		loggingRef = r.Logging.Spec.LoggingRef
@@ -51,6 +55,7 @@ func (r *Reconciler) markSecrets(secrets *secret.MountSecrets) ([]runtime.Object
 		secretItem.ObjectMeta.Annotations[annotationKey] = "watched"
 		markedSecrets = append(markedSecrets, secretItem)
 	}
+
 	return markedSecrets, reconciler.StatePresent, nil
 }
 
@@ -65,8 +70,12 @@ func (r *Reconciler) outputSecret(secrets *secret.MountSecrets, mountPath string
 	if fluentOutputSecret.Data == nil {
 		fluentOutputSecret.Data = make(map[string][]byte)
 	}
-	for _, secret := range *secrets {
-		fluentOutputSecret.Data[secret.MappedKey] = secret.Value
+
+	if secrets != nil {
+		for _, secret := range *secrets {
+			fluentOutputSecret.Data[secret.MappedKey] = secret.Value
+		}
 	}
+
 	return fluentOutputSecret, reconciler.StatePresent, nil
 }

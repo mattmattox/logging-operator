@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -119,10 +119,10 @@ func (*PanicObject) GetOwnerReferences() []metav1.OwnerReference {
 func (*PanicObject) SetOwnerReferences([]metav1.OwnerReference) {
 	panic("not implemented")
 }
-func (*PanicObject) GetClusterName() string {
+func (*PanicObject) GetZZZ_DeprecatedClusterName() string {
 	panic("not implemented")
 }
-func (*PanicObject) SetClusterName(clusterName string) {
+func (*PanicObject) SetZZZ_DeprecatedClusterName(clusterName string) {
 	panic("not implemented")
 }
 func (*PanicObject) GetManagedFields() []metav1.ManagedFieldsEntry {

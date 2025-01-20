@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Amazon Kinesis"
@@ -24,17 +24,21 @@ import (
 type _hugoKinesisFirehose interface{} //nolint:deadcode,unused
 
 // +docName:"Kinesis Firehose output plugin for Fluentd"
-//  More info at https://github.com/awslabs/aws-fluent-plugin-kinesis#configuration-kinesis_firehose
 //
-// #### Example output configurations
-// ```yaml
-// spec:
-//   kinesisFirehose:
-//     delivery_stream_name: example-stream-name
-//     region: us-east-1
-//     format:
-//       type: json
-// ```
+/*
+For details, see [https://github.com/awslabs/aws-fluent-plugin-kinesis#configuration-kinesis_firehose](https://github.com/awslabs/aws-fluent-plugin-kinesis#configuration-kinesis_firehose).
+
+## Example output configurations
+
+```yaml
+spec:
+  kinesisFirehose:
+    delivery_stream_name: example-stream-name
+    region: us-east-1
+    format:
+      type: json
+```
+*/
 type _docKinesisFirehose interface{} //nolint:deadcode,unused
 
 // +name:"Amazon Kinesis Firehose"
@@ -45,8 +49,8 @@ type _docKinesisFirehose interface{} //nolint:deadcode,unused
 type _metaKinesisFirehose interface{} //nolint:deadcode,unused
 
 // +kubebuilder:object:generate=true
-// +docName:"KinesisStream"
-// Send your logs to a Kinesis Stream
+// +docName:"KinesisFirehose"
+// Send your logs to a Kinesis Firehose
 type KinesisFirehoseOutputConfig struct {
 	// Name of the delivery stream to put data.
 	DeliveryStreamName string `json:"delivery_stream_name"`
@@ -92,6 +96,10 @@ type KinesisFirehoseOutputConfig struct {
 	Format *Format `json:"format,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 // +kubebuilder:object:generate=true

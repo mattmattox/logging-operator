@@ -16,9 +16,10 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strings"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/extensions/api/tailer"
-	config "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/extensionsconfig"
+	"github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/tailer"
+	config "github.com/kube-logging/logging-operator/pkg/sdk/extensions/extensionsconfig"
 )
 
 func (s SystemdTailer) defaults() SystemdTailer {
@@ -43,7 +44,11 @@ func (s SystemdTailer) Command(Name string) []string {
 		"-p", fmt.Sprintf("max_entries=%d", s.MaxEntries),
 	}
 	if s.SystemdFilter != "" {
-		command = append(command, "-p", fmt.Sprintf("systemd_filter=_SYSTEMD_UNIT=%s", s.SystemdFilter))
+		// check if filter includes journal field, if not default to _SYSTEMD_UNIT
+		if !strings.Contains(s.SystemdFilter, "=") {
+			s.SystemdFilter = fmt.Sprintf("_SYSTEMD_UNIT=%s", s.SystemdFilter)
+		}
+		command = append(command, "-p", fmt.Sprintf("systemd_filter=%s", s.SystemdFilter))
 	}
 	command = append(command,
 		"-o", "file",
@@ -56,5 +61,5 @@ func (s SystemdTailer) Command(Name string) []string {
 // GeneralDescriptor returns the tailer.General general Tailer struct
 func (s SystemdTailer) GeneralDescriptor() tailer.General {
 	s = s.defaults()
-	return tailer.General{Name: s.Name, Path: s.Path, Disabled: s.Disabled, ContainerBase: s.ContainerBase}
+	return tailer.General{Name: s.Name, Path: s.Path, Disabled: s.Disabled, ContainerBase: s.ContainerBase, Image: s.Image}
 }

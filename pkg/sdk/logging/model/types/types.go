@@ -18,10 +18,14 @@ import (
 	"fmt"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
 )
 
 var ContainerRuntime = "containerd"
+
+type LogKeyProvider interface {
+	GetLogKey() string
+}
 
 func GetLogKey() string {
 	switch ContainerRuntime {

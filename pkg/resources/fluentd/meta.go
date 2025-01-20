@@ -15,25 +15,35 @@
 package fluentd
 
 import (
-	util "github.com/banzaicloud/operator-tools/pkg/utils"
+	util "github.com/cisco-open/operator-tools/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // FluentdObjectMeta creates an objectMeta for resource fluentd
 func (r *Reconciler) FluentdObjectMeta(name, component string) metav1.ObjectMeta {
+	ownerReference := metav1.OwnerReference{
+		APIVersion: r.Logging.APIVersion,
+		Kind:       r.Logging.Kind,
+		Name:       r.Logging.Name,
+		UID:        r.Logging.UID,
+		Controller: util.BoolPointer(true),
+	}
+
+	if r.fluentdConfig != nil {
+		ownerReference = metav1.OwnerReference{
+			APIVersion: r.fluentdConfig.APIVersion,
+			Kind:       r.fluentdConfig.Kind,
+			Name:       r.fluentdConfig.Name,
+			UID:        r.fluentdConfig.UID,
+			Controller: util.BoolPointer(true),
+		}
+	}
+
 	o := metav1.ObjectMeta{
-		Name:      r.Logging.QualifiedName(name),
-		Namespace: r.Logging.Spec.ControlNamespace,
-		Labels:    r.Logging.GetFluentdLabels(component),
-		OwnerReferences: []metav1.OwnerReference{
-			{
-				APIVersion: r.Logging.APIVersion,
-				Kind:       r.Logging.Kind,
-				Name:       r.Logging.Name,
-				UID:        r.Logging.UID,
-				Controller: util.BoolPointer(true),
-			},
-		},
+		Name:            r.Logging.QualifiedName(name),
+		Namespace:       r.Logging.Spec.ControlNamespace,
+		Labels:          r.Logging.GetFluentdLabels(component, *r.fluentdSpec),
+		OwnerReferences: []metav1.OwnerReference{ownerReference},
 	}
 	return *o.DeepCopy()
 }
@@ -42,7 +52,7 @@ func (r *Reconciler) FluentdObjectMeta(name, component string) metav1.ObjectMeta
 func (r *Reconciler) FluentdObjectMetaClusterScope(name, component string) metav1.ObjectMeta {
 	o := metav1.ObjectMeta{
 		Name:   r.Logging.QualifiedName(name),
-		Labels: r.Logging.GetFluentdLabels(component),
+		Labels: r.Logging.GetFluentdLabels(component, *r.fluentdSpec),
 		OwnerReferences: []metav1.OwnerReference{
 			{
 				APIVersion: r.Logging.APIVersion,

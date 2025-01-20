@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package fluentd
 import (
 	"strings"
 
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -28,14 +28,14 @@ func (r *Reconciler) placeholderPodFor(pvc corev1.PersistentVolumeClaim) *corev1
 			Containers: []corev1.Container{
 				{
 					Name:            "pause",
-					Image:           r.Logging.Spec.FluentdSpec.Scaling.Drain.PauseImage.RepositoryWithTag(),
-					ImagePullPolicy: corev1.PullPolicy(r.Logging.Spec.FluentdSpec.Scaling.Drain.PauseImage.PullPolicy),
+					Image:           r.fluentdSpec.Scaling.Drain.PauseImage.RepositoryWithTag(),
+					ImagePullPolicy: corev1.PullPolicy(r.fluentdSpec.Scaling.Drain.PauseImage.PullPolicy),
 				},
 			},
-			NodeSelector:                  r.Logging.Spec.FluentdSpec.NodeSelector,
-			Tolerations:                   r.Logging.Spec.FluentdSpec.Tolerations,
-			Affinity:                      r.Logging.Spec.FluentdSpec.Affinity,
-			PriorityClassName:             r.Logging.Spec.FluentdSpec.PodPriorityClassName,
+			NodeSelector:                  r.fluentdSpec.NodeSelector,
+			Tolerations:                   r.fluentdSpec.Tolerations,
+			Affinity:                      r.fluentdSpec.Affinity,
+			PriorityClassName:             r.fluentdSpec.PodPriorityClassName,
 			RestartPolicy:                 corev1.RestartPolicyNever,
 			TerminationGracePeriodSeconds: utils.IntPointer64(0), // terminate immediately
 		},

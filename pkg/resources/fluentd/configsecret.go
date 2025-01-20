@@ -20,17 +20,20 @@ import (
 	"html/template"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type fluentdConfig struct {
-	LogLevel string
-	Monitor  struct {
-		Enabled bool
-		Port    int32
-		Path    string
+	LogFormat string
+	LogLevel  string
+	Monitor   struct {
+		Enabled     bool
+		Port        int32
+		EnabledIPv6 bool
+		Path        string
 	}
 	IgnoreSameLogInterval     string
 	IgnoreRepeatedLogInterval string
@@ -52,28 +55,26 @@ func generateConfig(input fluentdConfig) (string, error) {
 	return output.String(), nil
 }
 
-func (r *Reconciler) generateConfigSecret() (map[string][]byte, error) {
+func (r *Reconciler) generateConfigSecret(fluentdSpec v1beta1.FluentdSpec) (map[string][]byte, error) {
 	input := fluentdConfig{
-		IgnoreSameLogInterval:     r.Logging.Spec.FluentdSpec.IgnoreSameLogInterval,
-		IgnoreRepeatedLogInterval: r.Logging.Spec.FluentdSpec.IgnoreRepeatedLogInterval,
-		RootDir:                   r.Logging.Spec.FluentdSpec.RootDir,
-		EnableMsgpackTimeSupport:  r.Logging.Spec.FluentdSpec.EnableMsgpackTimeSupport,
+		IgnoreSameLogInterval:     fluentdSpec.IgnoreSameLogInterval,
+		IgnoreRepeatedLogInterval: fluentdSpec.IgnoreRepeatedLogInterval,
+		EnableMsgpackTimeSupport:  fluentdSpec.EnableMsgpackTimeSupport,
+		Workers:                   fluentdSpec.Workers,
+		LogFormat:                 fluentdSpec.LogFormat,
+		LogLevel:                  fluentdSpec.LogLevel,
 	}
 
-	if r.Logging.Spec.FluentdSpec.Metrics != nil {
+	input.RootDir = fluentdSpec.RootDir
+	if input.RootDir == "" {
+		input.RootDir = bufferPath
+	}
+
+	if fluentdSpec.Metrics != nil {
 		input.Monitor.Enabled = true
-		input.Monitor.Port = r.Logging.Spec.FluentdSpec.Metrics.Port
-		input.Monitor.Path = r.Logging.Spec.FluentdSpec.Metrics.Path
-	}
-
-	input.LogLevel = r.Logging.Spec.FluentdSpec.LogLevel
-	if input.LogLevel == "" {
-		input.LogLevel = "info"
-	}
-
-	input.Workers = r.Logging.Spec.FluentdSpec.Workers
-	if input.Workers <= 0 {
-		input.Workers = 1
+		input.Monitor.Port = fluentdSpec.Metrics.Port
+		input.Monitor.EnabledIPv6 = fluentdSpec.EnabledIPv6
+		input.Monitor.Path = fluentdSpec.Metrics.Path
 	}
 
 	inputConfig, err := generateConfig(input)
@@ -90,11 +91,11 @@ func (r *Reconciler) generateConfigSecret() (map[string][]byte, error) {
 }
 
 func (r *Reconciler) secretConfig() (runtime.Object, reconciler.DesiredState, error) {
-	configMap, err := r.generateConfigSecret()
+	configMap, err := r.generateConfigSecret(*r.fluentdSpec)
 	if err != nil {
 		return nil, nil, err
 	}
-	configMap["fluentlog.conf"] = []byte(fmt.Sprintf(fluentLog, r.Logging.Spec.FluentdSpec.FluentLogDestination))
+	configMap["fluentlog.conf"] = []byte(fmt.Sprintf(fluentLog, r.fluentdSpec.FluentLogDestination))
 	configs := &corev1.Secret{
 		ObjectMeta: r.FluentdObjectMeta(SecretConfigName, ComponentFluentd),
 		Data:       configMap,

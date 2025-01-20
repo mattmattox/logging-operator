@@ -17,14 +17,11 @@ package fluentd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/logging-operator/pkg/resources"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -37,33 +34,43 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/kube-logging/logging-operator/pkg/resources"
+	"github.com/kube-logging/logging-operator/pkg/resources/configcheck"
+	"github.com/kube-logging/logging-operator/pkg/resources/kubetool"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
 const (
-	SecretConfigName      = "fluentd"
-	AppSecretConfigName   = "fluentd-app"
-	ConfigCheckKey        = "generated.conf"
-	ConfigKey             = "fluent.conf"
-	AppConfigKey          = "fluentd.conf"
-	StatefulSetName       = "fluentd"
-	PodSecurityPolicyName = "fluentd"
-	ServiceName           = "fluentd"
-	OutputSecretName      = "fluentd-output"
-	OutputSecretPath      = "/fluentd/secret"
+	SecretConfigName        = "fluentd"
+	AppSecretConfigName     = "fluentd-app"
+	ConfigCheckKey          = "generated.conf"
+	ConfigKey               = "fluent.conf"
+	AppConfigKey            = "fluentd.conf"
+	StatefulSetName         = "fluentd"
+	ServiceName             = "fluentd"
+	ServicePort             = 24240
+	OutputSecretName        = "fluentd-output"
+	OutputSecretPath        = "/fluentd/secret"
+	PodDisruptionBudgetName = "fluentd"
 
 	bufferPath                     = "/buffers"
 	defaultServiceAccountName      = "fluentd"
 	roleBindingName                = "fluentd"
 	roleName                       = "fluentd"
+	sccRoleName                    = "scc-anyuid"
 	clusterRoleBindingName         = "fluentd"
 	clusterRoleName                = "fluentd"
 	containerName                  = "fluentd"
 	defaultBufferVolumeMetricsPort = 9200
+	drainerCheckInterval           = "10"
 )
 
 // Reconciler holds info what resource to reconcile
 type Reconciler struct {
-	Logging *v1beta1.Logging
+	Logging       *v1beta1.Logging
+	fluentdSpec   *v1beta1.FluentdSpec
+	fluentdConfig *v1beta1.FluentdConfig
 	*reconciler.GenericResourceReconciler
 	config  *string
 	secrets *secret.MountSecrets
@@ -77,17 +84,40 @@ type Desire struct {
 	BeforeUpdateHook func(runtime.Object) (reconciler.DesiredState, error)
 }
 
+func GetFluentd(ctx context.Context, Client client.Client, log logr.Logger, controlNamespace string) *v1beta1.FluentdConfig {
+	fluentdList := v1beta1.FluentdConfigList{}
+	// Detached fluentd must be in the `control namespace`
+	nsOpt := client.InNamespace(controlNamespace)
+
+	if err := Client.List(ctx, &fluentdList, nsOpt); err != nil {
+		log.Error(err, "listing fluentd configuration")
+		return nil
+	}
+
+	if len(fluentdList.Items) > 1 {
+		log.Error(errors.New("multiple fluentd configurations found"), fmt.Sprintf("number of configurations: %d", len(fluentdList.Items)))
+		return nil
+	}
+
+	if len(fluentdList.Items) == 1 {
+		return &fluentdList.Items[0]
+	}
+	return nil
+}
+
 func (r *Reconciler) getServiceAccount() string {
-	if r.Logging.Spec.FluentdSpec.Security.ServiceAccount != "" {
-		return r.Logging.Spec.FluentdSpec.Security.ServiceAccount
+	if r.fluentdSpec.Security.ServiceAccount != "" {
+		return r.fluentdSpec.Security.ServiceAccount
 	}
 	return r.Logging.QualifiedName(defaultServiceAccountName)
 }
 
 func New(client client.Client, log logr.Logger,
-	logging *v1beta1.Logging, config *string, secrets *secret.MountSecrets, opts reconciler.ReconcilerOpts) *Reconciler {
+	logging *v1beta1.Logging, fluentdSpec *v1beta1.FluentdSpec, fluentdConfig *v1beta1.FluentdConfig, config *string, secrets *secret.MountSecrets, opts reconciler.ReconcilerOpts) *Reconciler {
 	return &Reconciler{
 		Logging:                   logging,
+		fluentdSpec:               fluentdSpec,
+		fluentdConfig:             fluentdConfig,
 		GenericResourceReconciler: reconciler.NewGenericReconciler(client, log, opts),
 		config:                    config,
 		secrets:                   secrets,
@@ -95,20 +125,20 @@ func New(client client.Client, log logr.Logger,
 }
 
 // Reconcile reconciles the fluentd resource
-func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
-	ctx := context.Background()
+func (r *Reconciler) Reconcile(ctx context.Context) (*reconcile.Result, error) {
 	patchBase := client.MergeFrom(r.Logging.DeepCopy())
 
-	for _, res := range []resources.Resource{
+	objects := []resources.Resource{
 		r.serviceAccount,
 		r.role,
 		r.roleBinding,
+		r.sccRole,
+		r.sccRoleBinding,
 		r.clusterRole,
 		r.clusterRoleBinding,
-		r.clusterPodSecurityPolicy,
-		r.pspRole,
-		r.pspRoleBinding,
-	} {
+	}
+
+	for _, res := range objects {
 		o, state, err := res()
 		if err != nil {
 			return nil, errors.WrapIf(err, "failed to create desired object")
@@ -130,28 +160,30 @@ func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		if result, ok := r.Logging.Status.ConfigCheckResults[hash]; ok {
-			// We already have an existing configcheck result:
-			// - bail out if it was unsuccessful
-			// - cleanup previous results if it's successful
-			if !result {
-				return nil, errors.Errorf("current config is invalid")
+
+		// Fail when the current config is invalid
+		if result, ok := r.Logging.Status.ConfigCheckResults[hash]; ok && !result {
+			if hasPod, err := r.hasConfigCheckPod(ctx, hash, *r.fluentdSpec); hasPod {
+				return nil, errors.WrapIf(err, "current config is invalid")
 			}
-			var removedHashes []string
-			if removedHashes, err = r.configCheckCleanup(hash); err != nil {
-				r.Log.Error(err, "failed to cleanup resources")
-			} else {
-				if len(removedHashes) > 0 {
-					for _, removedHash := range removedHashes {
-						delete(r.Logging.Status.ConfigCheckResults, removedHash)
-					}
-					if err := r.Client.Status().Patch(ctx, r.Logging, patchBase); err != nil {
-						return nil, errors.WrapWithDetails(err, "failed to patch status", "logging", r.Logging)
-					} else {
-						// explicitly ask for a requeue to short circuit the controller loop after the status update
-						return &reconcile.Result{Requeue: true}, nil
-					}
-				}
+			// clean the status so that we can rerun the check
+			return r.statusUpdate(ctx, patchBase, nil)
+		}
+
+		if result, ok := r.Logging.Status.ConfigCheckResults[hash]; ok {
+			cleaner := configcheck.NewConfigCheckCleaner(r.Client, ComponentConfigCheck, r.Logging.GetName())
+
+			var cleanupErrs error
+			cleanupErrs = errors.Append(cleanupErrs, cleaner.SecretCleanup(ctx, hash))
+			cleanupErrs = errors.Append(cleanupErrs, cleaner.PodCleanup(ctx, hash))
+
+			if cleanupErrs != nil {
+				// Errors with the cleanup should not block the reconciliation, we just note it
+				r.Log.Error(err, "issues during configcheck cleanup, moving on")
+			} else if len(r.Logging.Status.ConfigCheckResults) > 1 {
+				return r.statusUpdate(ctx, patchBase, map[string]bool{
+					hash: result,
+				})
 			}
 		} else {
 			// We don't have an existing result
@@ -175,7 +207,7 @@ func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
 				} else {
 					r.Log.Info("still waiting for the configcheck result...")
 				}
-				return &reconcile.Result{RequeueAfter: time.Minute}, nil
+				return &reconcile.Result{Requeue: true}, nil
 			}
 		}
 	}
@@ -205,19 +237,24 @@ func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
 			return result, nil
 		}
 	}
-	for _, res := range []resources.Resource{
+
+	resourceObjects := []resources.Resource{
 		r.secretConfig,
 		r.appConfigSecret,
 		r.statefulset,
 		r.service,
 		r.headlessService,
 		r.serviceMetrics,
-		r.monitorServiceMetrics,
 		r.serviceBufferMetrics,
-		r.monitorBufferServiceMetrics,
-		r.prometheusRules,
-		r.bufferVolumePrometheusRules,
-	} {
+		r.pdb,
+	}
+	if resources.IsSupported(ctx, resources.ServiceMonitorKey) {
+		resourceObjects = append(resourceObjects, r.monitorServiceMetrics, r.monitorBufferServiceMetrics)
+	}
+	if resources.IsSupported(ctx, resources.PrometheusRuleKey) {
+		resourceObjects = append(resourceObjects, r.prometheusRules, r.bufferVolumePrometheusRules)
+	}
+	for _, res := range resourceObjects {
 		o, state, err := res()
 		if err != nil {
 			return nil, errors.WrapIf(err, "failed to create desired object")
@@ -241,14 +278,27 @@ func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
 	return nil, nil
 }
 
+func (r *Reconciler) statusUpdate(ctx context.Context, patchBase client.Patch, result map[string]bool) (*reconcile.Result, error) {
+	r.Logging.Status.ConfigCheckResults = result
+	if err := r.Client.Status().Patch(ctx, r.Logging, patchBase); err != nil {
+		return nil, errors.WrapWithDetails(err, "failed to patch status", "logging", r.Logging)
+	} else {
+		// explicitly ask for a requeue to short circuit the controller loop after the status update
+		return &reconcile.Result{Requeue: true}, nil
+	}
+}
+
 func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, error) {
-	if r.Logging.Spec.FluentdSpec.DisablePvc || !r.Logging.Spec.FluentdSpec.Scaling.Drain.Enabled {
-		r.Log.Info("fluentd buffer draining is disabled")
+	if !r.fluentdSpec.Scaling.Drain.Enabled {
+		return nil, nil
+	}
+	if r.fluentdSpec.DisablePvc && r.fluentdSpec.Scaling.Drain.Enabled {
+		r.Log.Info("fluentd buffer draining cannot be enabled because PVC for the statefulSet is disabled")
 		return nil, nil
 	}
 
 	nsOpt := client.InNamespace(r.Logging.Spec.ControlNamespace)
-	fluentdLabelSet := r.Logging.GetFluentdLabels(ComponentFluentd)
+	fluentdLabelSet := r.Logging.GetFluentdLabels(ComponentFluentd, *r.fluentdSpec)
 
 	var pvcList corev1.PersistentVolumeClaimList
 	if err := r.Client.List(ctx, &pvcList, nsOpt,
@@ -263,16 +313,16 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 		return nil, errors.WrapIf(err, "listing StatefulSet pods")
 	}
 
-	bufVolName := r.Logging.QualifiedName(r.Logging.Spec.FluentdSpec.BufferStorageVolume.PersistentVolumeClaim.PersistentVolumeSource.ClaimName)
+	bufVolName := r.Logging.QualifiedName(r.fluentdSpec.BufferStorageVolume.PersistentVolumeClaim.PersistentVolumeSource.ClaimName)
 
 	pvcsInUse := make(map[string]bool)
 	for _, pod := range stsPods.Items {
-		if bufVol := findVolumeByName(pod.Spec.Volumes, bufVolName); bufVol != nil {
+		if bufVol := kubetool.FindVolumeByName(pod.Spec.Volumes, bufVolName); bufVol != nil {
 			pvcsInUse[bufVol.PersistentVolumeClaim.ClaimName] = true
 		}
 	}
 
-	replicaCount, err := NewDataProvider(r.Client).GetReplicaCount(ctx, r.Logging)
+	replicaCount, err := NewDataProvider(r.Client, r.Logging, r.fluentdSpec, r.fluentdConfig).GetReplicaCount(ctx)
 	if err != nil {
 		return nil, errors.WrapIf(err, "get replica count for fluentd")
 	}
@@ -283,13 +333,13 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 	}
 
 	var jobList batchv1.JobList
-	if err := r.Client.List(ctx, &jobList, nsOpt, client.MatchingLabels(r.Logging.GetFluentdLabels(ComponentDrainer))); err != nil {
+	if err := r.Client.List(ctx, &jobList, nsOpt, client.MatchingLabels(r.Logging.GetFluentdLabels(ComponentDrainer, *r.fluentdSpec))); err != nil {
 		return nil, errors.WrapIf(err, "listing buffer drainer jobs")
 	}
 
 	jobOfPVC := make(map[string]batchv1.Job)
 	for _, job := range jobList.Items {
-		if bufVol := findVolumeByName(job.Spec.Template.Spec.Volumes, bufVolName); bufVol != nil {
+		if bufVol := kubetool.FindVolumeByName(job.Spec.Template.Spec.Volumes, bufVolName); bufVol != nil {
 			jobOfPVC[bufVol.PersistentVolumeClaim.ClaimName] = job
 		}
 	}
@@ -312,7 +362,7 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 		}
 
 		job, hasJob := jobOfPVC[pvc.Name]
-		if hasJob && jobSuccessfullyCompleted(job) {
+		if hasJob && kubetool.JobSuccessfullyCompleted(&job) {
 			pvcLog.Info("drainer job for PVC has completed, adding drained label and deleting job")
 
 			patch := client.MergeFrom(pvc.DeepCopy())
@@ -327,10 +377,18 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 				continue
 			}
 
+			if r.fluentdSpec.Scaling.Drain.DeleteVolume {
+				if err := client.IgnoreNotFound(r.Client.Delete(ctx, &pvc, client.PropagationPolicy(v1.DeletePropagationBackground))); err != nil {
+					cr.CombineErr(errors.WrapIfWithDetails(err, "deleting drained PVC", "pvc", pvc.Name))
+					continue
+				}
+			}
+
 			if res, err := r.ReconcileResource(r.placeholderPodFor(pvc), reconciler.StateAbsent); err != nil {
 				cr.Combine(res, errors.WrapIfWithDetails(err, "removing placeholder pod for pvc", "pvc", pvc.Name))
 				continue
 			}
+
 			continue
 		}
 
@@ -349,7 +407,7 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 			continue
 		}
 
-		if hasJob && !jobSuccessfullyCompleted(job) {
+		if hasJob && !kubetool.JobSuccessfullyCompleted(&job) {
 			if job.Status.Failed > 0 {
 				cr.CombineErr(errors.NewWithDetails("draining PVC failed", "pvc", pvc.Name, "attempts", job.Status.Failed))
 			} else {
@@ -366,7 +424,7 @@ func (r *Reconciler) reconcileDrain(ctx context.Context) (*reconcile.Result, err
 				continue
 			}
 
-			if job, err := r.drainerJobFor(pvc); err != nil {
+			if job, err := r.drainerJobFor(pvc, *r.fluentdSpec); err != nil {
 				cr.CombineErr(errors.WrapIf(err, "assembling drainer job"))
 			} else {
 				cr.Combine(r.ReconcileResource(job, reconciler.StatePresent))
@@ -410,18 +468,4 @@ const drainStatusLabelValue = "drained"
 
 func markedAsDrained(pvc corev1.PersistentVolumeClaim) bool {
 	return pvc.Labels[drainStatusLabelKey] == drainStatusLabelValue
-}
-
-func findVolumeByName(vols []corev1.Volume, name string) *corev1.Volume {
-	for i := range vols {
-		vol := &vols[i]
-		if vol.Name == name {
-			return vol
-		}
-	}
-	return nil
-}
-
-func jobSuccessfullyCompleted(job batchv1.Job) bool {
-	return job.Status.CompletionTime != nil && job.Status.Succeeded > 0
 }

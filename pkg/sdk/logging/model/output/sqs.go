@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"SQS"
@@ -38,7 +38,7 @@ type _metaSQS interface{} //nolint:deadcode,unused
 // +kubebuilder:object:generate=true
 // +docName:"Output Config"
 type SQSOutputConfig struct {
-	// SQS queue url e.g. https://sqs.us-west-2.amazonaws.com/123456789012/myqueue
+	// SQS queue url e.g. `https://sqs.us-west-2.amazonaws.com/123456789012/myqueue`
 	SQSUrl string `json:"sqs_url,omitempty"`
 	// SQS queue name - required if sqs_url is not set
 	QueueName string `json:"queue_name,omitempty"`
@@ -60,32 +60,40 @@ type SQSOutputConfig struct {
 	TagPropertyName string `json:"tag_property_name,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 //
-// #### Example `SQS` output configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Output
-//metadata:
-//  name: sqs-output-sample
-//spec:
-//  sqs:
-//    queue_name: some-aws-sqs-queue
-//    create_queue: false
-//    region: us-east-1
-// ```
-//
-// #### Fluentd Config Result
-// ```
-//  <match **>
-//      @type sqs
-//      @id test_sqs
-//      queue_name some-aws-sqs-queue
-//      create_queue false
-//      region us-east-1
-//  </match>
-// ```
+/*
+## Example `SQS` output configurations
+
+```yaml
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Output
+metadata:
+  name: sqs-output-sample
+spec:
+  sqs:
+    queue_name: some-aws-sqs-queue
+    create_queue: false
+    region: us-east-1
+```
+
+Fluentd config result:
+
+```xml
+<match **>
+    @type sqs
+    @id test_sqs
+    queue_name some-aws-sqs-queue
+    create_queue false
+    region us-east-1
+</match>
+```
+*/
 type _expSQS interface{} //nolint:deadcode,unused
 
 func (s *SQSOutputConfig) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

@@ -15,8 +15,8 @@
 package filter
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"StdOut"
@@ -41,29 +41,34 @@ type StdOutFilterConfig struct {
 	OutputType string `json:"output_type,omitempty"`
 }
 
-// #### Example `StdOut` filter configurations
-// ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - stdout:
-//        output_type: json
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
-// ```
 //
-// #### Fluentd Config Result
-// ```yaml
-//<filter **>
-//  @type stdout
-//  @id test_stdout
-//  output_type json
-//</filter>
-// ```
+/*
+## Example `StdOut` filter configurations
+
+{{< highlight yaml >}}
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: demo-flow
+spec:
+  filters:
+    - stdout:
+        output_type: json
+  selectors: {}
+  localOutputRefs:
+    - demo-output
+{{</ highlight >}}
+
+Fluentd config result:
+
+{{< highlight yaml >}}
+<filter **>
+  @type stdout
+  @id test_stdout
+  output_type json
+</filter>
+{{</ highlight >}}
+*/
 type _expStdOut interface{} //nolint:deadcode,unused
 
 func NewStdOutFilterConfig() *StdOutFilterConfig {
